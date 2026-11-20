@@ -1,0 +1,1835 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exploration Activities Dashboard</title>
+<meta name="description" content="Daily, weekly and monthly exploration reporting dashboard: Brownfield drilling, Greenfield sampling, Core Shed / PrepLab and mining.">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+  // Apply the saved/OS theme before first paint (avoids a flash of the wrong theme)
+  (function(){try{var t=localStorage.getItem('xd-theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+</script>
+<style>
+:root{
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: Georgia, "Times New Roman", serif;
+  --radius: 12px;
+  --bg:#f3f4f6; --surface:#ffffff; --surface-2:#f7f8fa; --chart-surface:#ffffff;
+  --border:#e3e6eb; --grid:#eceef1; --track:#e9ecf0;
+  --text:#14202e; --text-2:#52514e; --muted:#7b7a75;
+  --brand:#1c2b45; --brand-ink:#ffffff; --accent:#0f7f86;
+  --good-ink:#0a7d0a; --bad-ink:#c23131; --good:#0ca30c; --critical:#d03b3b; --warning:#fab219;
+  --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
+  --series-5:#e87ba4; --series-6:#008300; --series-7:#6250d6; --series-8:#e34948; --series-other:#9a9893;
+  --ws-Brownfield:#2a78d6; --ws-Greenfield:#1baf7a; --ws-PrepLab:#eda100; --ws-Mining:#e87ba4;
+  --row-hover:#f4f7fb; --focus:#2a78d6; --shadow:0 1px 2px rgba(16,24,40,.05);
+  color-scheme: light;
+}
+:root[data-theme="dark"]{
+  --bg:#111111; --surface:#1a1a19; --surface-2:#222221; --chart-surface:#1a1a19;
+  --border:#2f2f2d; --grid:#2a2a28; --track:#2c2c2a;
+  --text:#f0efec; --text-2:#c3c2b7; --muted:#8f8d86;
+  --brand:#0f1a2b; --brand-ink:#f0efec; --accent:#35b3b9;
+  --good-ink:#3cc23c; --bad-ink:#ef7777; --good:#0ca30c; --critical:#e66767;
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
+  --series-5:#d55181; --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; --series-other:#6f6d68;
+  --ws-Brownfield:#3987e5; --ws-Greenfield:#199e70; --ws-PrepLab:#c98500; --ws-Mining:#d55181;
+  --row-hover:#232322; --focus:#3987e5; --shadow:none;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:14px/1.45 var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+.num,.kpi-value,td.n{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* ---------- top bar & navigation ---------- */
+.topbar{background:var(--brand);color:var(--brand-ink);padding:14px 24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-mark{font-family:var(--serif);font-weight:700;font-size:15px;letter-spacing:.06em;border:1.5px solid currentColor;border-radius:999px;padding:3px 12px;opacity:.95}
+.brand h1{font-family:var(--serif);font-size:20px;letter-spacing:.04em;margin:0;font-weight:700;text-transform:uppercase}
+.brand p{margin:0;font-size:12px;opacity:.75}
+.top-actions{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{font-size:12px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.12)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.danger{color:var(--bad-ink);border-color:color-mix(in srgb,var(--bad-ink) 40%,var(--border))}
+.btn.ghost{background:transparent;border-color:rgba(255,255,255,.28);color:var(--brand-ink)}
+.btn.ghost:hover{background:rgba(255,255,255,.1)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.tabs{display:flex;gap:4px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{border:0;background:transparent;padding:13px 16px;font-weight:600;color:var(--text-2);cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+
+/* ---------- filter bar ---------- */
+.filterbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:3px}
+.field>span{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+select,input[type=date],input[type=text],input[type=number],input[type=search]{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 9px;min-height:34px}
+input[type=number]{width:100%}
+.period-nav{display:flex;gap:4px}
+.period-nav select{min-width:220px}
+
+/* ---------- layout ---------- */
+main{padding:20px 24px 48px;max-width:1600px;margin:0 auto}
+.view-head{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:4px 0 16px}
+.view-head h2{font-family:var(--serif);font-size:24px;margin:0;letter-spacing:.02em;text-transform:uppercase}
+.view-head .sub{color:var(--text-2)}
+.grid{display:grid;gap:16px}
+.g-3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g-2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+.g-kpi{grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+.mt{margin-top:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);min-width:0}
+.card h3{margin:0;font-size:15px;font-weight:650}
+.card .card-sub{color:var(--muted);font-size:12px;margin-top:2px}
+.card-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.card-head .grow{flex:1;min-width:0}
+.banner{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:color-mix(in srgb,var(--accent) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border));border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;font-size:13px}
+.banner .grow{flex:1;min-width:240px}
+.banner.warn{background:color-mix(in srgb,var(--warning) 14%,var(--surface));border-color:color-mix(in srgb,var(--warning) 45%,var(--border))}
+
+/* headline cards (mirror the report header boxes) */
+.headline{border-top:4px solid var(--c,var(--accent))}
+.headline .eyebrow{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-2)}
+.dot{width:10px;height:10px;border-radius:3px;background:var(--c,var(--accent));flex:none;display:inline-block}
+.headline .big{font-family:var(--serif);font-size:21px;font-weight:700;margin:8px 0 4px;line-height:1.2}
+.headline .today{color:var(--text-2);font-size:13px;border-top:1px solid var(--border);padding-top:8px;margin-top:10px}
+
+/* KPI cards */
+.kpi{display:flex;flex-direction:column;gap:4px}
+.kpi-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;align-items:center;gap:6px}
+.kpi-value{font-size:26px;font-weight:700;line-height:1.15}
+.kpi-value small{font-size:14px;font-weight:600;color:var(--text-2);margin-left:3px}
+.kpi-sub{font-size:12px;color:var(--text-2)}
+.delta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px 4px;font-size:12px;font-weight:600;margin-top:2px}
+.delta.good{color:var(--good-ink)} .delta.bad{color:var(--bad-ink)} .delta.flat{color:var(--muted)}
+.delta .vs{font-weight:400;color:var(--muted)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);white-space:nowrap}
+.status{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;display:inline-flex;gap:4px;align-items:center}
+.status.ok{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good-ink)}
+.status.no{background:color-mix(in srgb,var(--critical) 16%,transparent);color:var(--bad-ink)}
+
+/* progress bars */
+.prog{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto;gap:6px 12px;align-items:center}
+.prog .name{font-size:13px;font-weight:600;line-height:1.25}
+.prog .name small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.bar{height:10px;background:var(--track);border-radius:999px;overflow:hidden;position:relative}
+.bar>i{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--fill,var(--series-1))}
+.bar.thin{height:7px}
+.prog .val{font-size:12px;color:var(--text-2);text-align:right;white-space:nowrap}
+.prog .val b{color:var(--text)}
+.prog-sep{grid-column:1/-1;border-top:1px solid var(--border);margin:4px 0}
+
+/* charts */
+.chart-box{position:relative;height:290px}
+.chart-box.tall{height:340px}
+.chart-box.short{height:230px}
+.empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;font-size:13px;border:1px dashed var(--border);border-radius:10px;padding:16px}
+.legend-note{font-size:11px;color:var(--muted);margin-top:8px}
+
+/* challenges */
+.issues{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.issue{border:1px solid var(--border);border-left:4px solid var(--c);border-radius:10px;padding:10px 12px;background:var(--surface-2)}
+.issue .site{font-weight:650;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.issue .site .date{font-weight:400;color:var(--muted);font-size:12px;margin-left:auto}
+.issue p{margin:6px 0 0;font-size:13px}
+.issue .lbl{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+
+/* tables */
+.tbl-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.tbl-tools input[type=search]{min-width:240px;flex:0 1 320px}
+.tbl-tools .grow{flex:1}
+.tbl-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px;max-height:640px}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:var(--surface-2);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);font-weight:700;white-space:nowrap;z-index:1}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--text)}
+th .arr{opacity:.55;font-size:10px;margin-left:3px}
+td.n,th.n{text-align:right;white-space:nowrap}
+tbody tr:hover td{background:var(--row-hover)}
+td.clamp{max-width:340px}
+td.clamp div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+td.wrap{min-width:220px;max-width:380px}
+.src{font-size:11px;color:var(--muted);white-space:nowrap}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px;font-size:12px;color:var(--text-2)}
+.icon-btn{border:0;background:transparent;cursor:pointer;color:var(--muted);padding:2px 6px;border-radius:6px;font-size:15px;line-height:1}
+.icon-btn:hover{color:var(--bad-ink);background:color-mix(in srgb,var(--critical) 12%,transparent)}
+tr.sum td{font-weight:700;background:var(--surface-2)}
+
+/* data tab */
+.drop{border:2px dashed color-mix(in srgb,var(--accent) 55%,var(--border));border-radius:14px;padding:28px;text-align:center;background:color-mix(in srgb,var(--accent) 5%,var(--surface));cursor:pointer;transition:background .15s}
+.drop.over{background:color-mix(in srgb,var(--accent) 16%,var(--surface))}
+.drop strong{font-size:16px}
+.drop p{margin:6px 0 0;color:var(--text-2)}
+.check{display:inline-flex;gap:8px;align-items:center;cursor:pointer}
+.msg{font-size:13px;padding:2px 0}
+.msg.err{color:var(--bad-ink)} .msg.warn{color:#a86b00} :root[data-theme="dark"] .msg.warn{color:#f0b84a}
+.msg.ok{color:var(--good-ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:2px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2)}
+.chip.ok{border-color:color-mix(in srgb,var(--good) 45%,var(--border))}
+.chip.miss{border-color:color-mix(in srgb,var(--warning) 60%,var(--border))}
+.chip.bad{border-color:color-mix(in srgb,var(--critical) 60%,var(--border));color:var(--bad-ink)}
+.sites-tbl input,.sites-tbl select{min-height:30px;padding:4px 6px;font-size:12.5px}
+.sites-tbl input[type=number]{min-width:84px}
+.sites-tbl input[type=text]{min-width:120px}
+.sites-tbl th.grp{text-align:center;background:var(--surface)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:600}
+details summary{cursor:pointer;font-weight:600}
+
+/* modal / toast */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:100;padding:16px}
+.modal-bg.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:460px;width:100%;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal h4{margin:0 0 8px;font-size:17px}
+.modal p{margin:0 0 16px;color:var(--text-2)}
+.modal .row{display:flex;gap:8px;justify-content:flex-end}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--text);color:var(--surface);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;transform:translateY(10px);transition:all .2s;z-index:120;max-width:420px;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.print-only{display:none}
+.hidden{display:none!important}
+
+@media (max-width:720px){
+  .topbar,.tabs,.filterbar,main{padding-left:14px;padding-right:14px}
+  .g-2{grid-template-columns:1fr}
+  .prog{grid-template-columns:minmax(0,1fr)}
+  .prog .val{text-align:left;white-space:normal;margin-bottom:6px}
+  .btn{white-space:normal;text-align:left}
+  .tbl-tools input[type=search]{min-width:0;flex:1 1 100%}
+  .headline .big{font-size:19px}
+  .period-nav select{min-width:160px}
+}
+
+/* ---------- print / PDF ---------- */
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  :root,:root[data-theme="dark"]{--bg:#fff;--surface:#fff;--surface-2:#f6f7f9;--text:#111;--text-2:#444;--muted:#666;--border:#d9dce1;--brand:#1c2b45;--brand-ink:#fff}
+  body{background:#fff;font-size:11px}
+  .tabs,.filterbar,.top-actions,.no-print,.tbl-tools,.pager,.banner,.col-sel,.col-del{display:none!important}
+  .print-only{display:block}
+  main{padding:8px 0;max-width:none}
+  .card{box-shadow:none;break-inside:avoid;page-break-inside:avoid}
+  .tbl-wrap{max-height:none;overflow:visible}
+  th{position:static}
+  .chart-box{height:230px}
+  .topbar{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:8px 12px}
+  .bar,.bar>i,.dot,.headline,.issue,.status{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">CHEMAF</span>
+    <div>
+      <h1>Exploration Activities</h1>
+      <p>Brownfield drilling · Greenfield sampling · Core Shed / PrepLab · Mining</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span class="pill" id="store-pill" title="Where your data is saved">Loading…</span>
+    <button class="btn ghost" id="btn-theme" type="button" aria-label="Toggle light or dark mode">◐ <span>Dark</span></button>
+    <button class="btn ghost" id="btn-print" type="button">⎙ Print / PDF</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Report views">
+  <button class="tab" role="tab" data-view="daily" aria-selected="true">Daily</button>
+  <button class="tab" role="tab" data-view="weekly" aria-selected="false">Weekly</button>
+  <button class="tab" role="tab" data-view="monthly" aria-selected="false">Monthly</button>
+  <button class="tab" role="tab" data-view="data" aria-selected="false">Data Upload &amp; Management</button>
+</nav>
+
+<section class="filterbar" id="filterbar" aria-label="Filters">
+  <label class="field"><span id="f-period-label">Day</span>
+    <div class="period-nav">
+      <button class="btn sm" type="button" data-action="period-step" data-step="-1" aria-label="Previous period">‹</button>
+      <select id="f-period"></select>
+      <button class="btn sm" type="button" data-action="period-step" data-step="1" aria-label="Next period">›</button>
+    </div>
+  </label>
+  <label class="field"><span>Workstream</span><select id="f-ws"></select></label>
+  <label class="field"><span>Site</span><select id="f-site"></select></label>
+  <label class="field"><span>Date range from</span><input type="date" id="f-from"></label>
+  <label class="field"><span>to</span><input type="date" id="f-to"></label>
+  <label class="field"><span>Trend metric</span><select id="f-metric"></select></label>
+  <button class="btn sm" type="button" data-action="reset-filters" style="margin-bottom:4px">Reset filters</button>
+</section>
+
+<main id="main">
+  <div id="lib-warning"></div>
+  <div id="sync-banner"></div>
+  <div id="sample-banner"></div>
+  <section id="view-daily" class="view" role="tabpanel"></section>
+  <section id="view-weekly" class="view hidden" role="tabpanel"></section>
+  <section id="view-monthly" class="view hidden" role="tabpanel"></section>
+  <section id="view-data" class="view hidden" role="tabpanel"></section>
+</main>
+
+<div class="modal-bg" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal">
+    <h4 id="modal-title"></h4>
+    <p id="modal-body"></p>
+    <div class="row">
+      <button class="btn" type="button" id="modal-cancel">Cancel</button>
+      <button class="btn primary" type="button" id="modal-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+<input type="file" id="backup-input" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+/* =====================================================================
+   Exploration Activities Dashboard — single-file app
+   Data model: one record per Date × Site (× Hole/Block), metrics as columns.
+   Weekly and monthly views are computed from the daily records at render
+   time, so they can never drift out of sync with the uploaded data.
+   ===================================================================== */
+
+const SEED = {"sites":[{"site":"Mulusonoi DD","workstream":"Brownfield","licence":"","activity":"Diamond drilling","drillType":"DD","programmeM":14410,"dailyTargetM":null,"recoveryTarget":90,"active":true},{"site":"Mutoshi North WRD","workstream":"Brownfield","licence":"PE2604","activity":"WRD sterilisation (RC)","drillType":"RC","programmeM":2300,"dailyTargetM":150,"active":true},{"site":"Dianda RC","workstream":"Brownfield","licence":"PE2350","activity":"Dianda South RC programme (30 holes)","drillType":"RC","programmeM":2500,"dailyTargetM":150,"active":true},{"site":"Kimwehulu RC","workstream":"Brownfield","licence":"","activity":"RC / survey (12 holes)","drillType":"RC","programmeM":530,"active":false},{"site":"MR2 RC","workstream":"Brownfield","licence":"","activity":"RC drilling / database (193 holes)","drillType":"RC","programmeM":4825,"openM":2365,"active":false},{"site":"MR1 RC","workstream":"Brownfield","licence":"","activity":"RC drilling (18 holes)","drillType":"RC","programmeM":360,"active":false},{"site":"Mutoshi Stockpiles","workstream":"Brownfield","licence":"","activity":"PSD / ore sorting","active":false},{"site":"Makala R2 Dewatering","workstream":"Brownfield","licence":"PE4613","activity":"Dewatering study","active":false},{"site":"Mutaka Geochem","workstream":"Greenfield","licence":"PE12489","activity":"Soil & termite sampling","soilTarget":1104,"termiteTarget":800,"openSoil":530,"openTermite":110,"active":true},{"site":"Tombolo Geochem","workstream":"Greenfield","licence":"PE2774","activity":"Soil & termite sampling","soilTarget":1409,"termiteTarget":1000,"openSoil":300,"openTermite":0,"active":true},{"site":"Dianda Geochem","workstream":"Greenfield","licence":"PE2350","activity":"Soil & termite sampling","soilTarget":2023,"termiteTarget":1200,"openSoil":156,"openTermite":28,"active":true},{"site":"Core Shed / PrepLab","workstream":"PrepLab","licence":"","activity":"Receipt, preparation & submission","dailySubmitTarget":250,"openReceived":11145,"openSubmitted":12197,"active":true},{"site":"Mupanja Mining","workstream":"Mining","licence":"","activity":"Mining & grade control","openTrips":1624,"openWaste":56670,"openCu":1200,"openCo":2730,"active":true}],"records":[{"date":"2026-10-01","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":53,"workstream":"Brownfield","id":"seed-0000"},{"date":"2026-10-01","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":7,"termite":10,"workstream":"Greenfield","id":"seed-0001"},{"date":"2026-10-01","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":20,"termite":7,"workstream":"Greenfield","id":"seed-0002"},{"date":"2026-10-01","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":5,"termite":8,"workstream":"Greenfield","id":"seed-0003"},{"date":"2026-10-01","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":233,"submitted":277,"workstream":"PrepLab","id":"seed-0004"},{"date":"2026-10-02","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":54,"workstream":"Brownfield","id":"seed-0005"},{"date":"2026-10-02","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":7,"termite":8,"workstream":"Greenfield","id":"seed-0006"},{"date":"2026-10-02","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":12,"termite":4,"workstream":"Greenfield","id":"seed-0007"},{"date":"2026-10-02","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":6,"workstream":"Greenfield","id":"seed-0008"},{"date":"2026-10-02","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":254,"submitted":274,"workstream":"PrepLab","id":"seed-0009"},{"date":"2026-10-03","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":29,"workstream":"Brownfield","id":"seed-0010"},{"date":"2026-10-03","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":8,"workstream":"Greenfield","id":"seed-0011"},{"date":"2026-10-03","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":12,"termite":5,"workstream":"Greenfield","id":"seed-0012"},{"date":"2026-10-03","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":7,"termite":10,"workstream":"Greenfield","id":"seed-0013"},{"date":"2026-10-03","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":178,"submitted":359,"workstream":"PrepLab","id":"seed-0014"},{"date":"2026-10-04","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":32,"workstream":"Brownfield","id":"seed-0015"},{"date":"2026-10-04","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":11,"workstream":"Greenfield","id":"seed-0016"},{"date":"2026-10-04","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":5,"workstream":"Greenfield","id":"seed-0017"},{"date":"2026-10-04","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":5,"termite":10,"workstream":"Greenfield","id":"seed-0018"},{"date":"2026-10-04","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":170,"submitted":219,"workstream":"PrepLab","id":"seed-0019"},{"date":"2026-10-05","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":30,"workstream":"Brownfield","id":"seed-0020"},{"date":"2026-10-05","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":12,"termite":10,"workstream":"Greenfield","id":"seed-0021"},{"date":"2026-10-05","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":11,"termite":8,"workstream":"Greenfield","id":"seed-0022"},{"date":"2026-10-05","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":6,"termite":9,"workstream":"Greenfield","id":"seed-0023"},{"date":"2026-10-05","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":295,"submitted":334,"workstream":"PrepLab","id":"seed-0024"},{"date":"2026-10-06","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":44,"workstream":"Brownfield","id":"seed-0025"},{"date":"2026-10-06","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":14,"termite":5,"workstream":"Greenfield","id":"seed-0026"},{"date":"2026-10-06","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":5,"workstream":"Greenfield","id":"seed-0027"},{"date":"2026-10-06","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":5,"termite":9,"workstream":"Greenfield","id":"seed-0028"},{"date":"2026-10-06","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":294,"submitted":253,"workstream":"PrepLab","id":"seed-0029"},{"date":"2026-10-07","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":51,"workstream":"Brownfield","id":"seed-0030"},{"date":"2026-10-07","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":6,"workstream":"Greenfield","id":"seed-0031"},{"date":"2026-10-07","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":6,"workstream":"Greenfield","id":"seed-0032"},{"date":"2026-10-07","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":8,"workstream":"Greenfield","id":"seed-0033"},{"date":"2026-10-07","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":348,"submitted":226,"workstream":"PrepLab","id":"seed-0034"},{"date":"2026-10-08","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":28,"workstream":"Brownfield","id":"seed-0035"},{"date":"2026-10-08","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":16,"termite":7,"workstream":"Greenfield","id":"seed-0036"},{"date":"2026-10-08","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":5,"workstream":"Greenfield","id":"seed-0037"},{"date":"2026-10-08","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":6,"workstream":"Greenfield","id":"seed-0038"},{"date":"2026-10-08","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":166,"submitted":186,"workstream":"PrepLab","id":"seed-0039"},{"date":"2026-10-09","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":21,"workstream":"Brownfield","id":"seed-0040"},{"date":"2026-10-09","site":"MR2 RC","source":"Allocated (Oct monthly)","metres":62,"challenge":"30 Sep baseline 2,365 m; 9 Oct 2,748 m. Alternative total 2,749 m to reconcile.","action":"Reconcile 1 m difference and track composites.","workstream":"Brownfield","id":"seed-0041"},{"date":"2026-10-09","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":6,"workstream":"Greenfield","id":"seed-0042"},{"date":"2026-10-09","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":21,"termite":6,"workstream":"Greenfield","id":"seed-0043"},{"date":"2026-10-09","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":5,"termite":9,"workstream":"Greenfield","id":"seed-0044"},{"date":"2026-10-09","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":281,"submitted":262,"workstream":"PrepLab","id":"seed-0045"},{"date":"2026-10-10","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":20,"workstream":"Brownfield","id":"seed-0046"},{"date":"2026-10-10","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":9,"workstream":"Greenfield","id":"seed-0047"},{"date":"2026-10-10","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":19,"termite":6,"workstream":"Greenfield","id":"seed-0048"},{"date":"2026-10-10","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":5,"termite":9,"workstream":"Greenfield","id":"seed-0049"},{"date":"2026-10-10","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":221,"submitted":339,"workstream":"PrepLab","id":"seed-0050"},{"date":"2026-10-11","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":20,"workstream":"Brownfield","id":"seed-0051"},{"date":"2026-10-11","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":8,"workstream":"Greenfield","id":"seed-0052"},{"date":"2026-10-11","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":7,"workstream":"Greenfield","id":"seed-0053"},{"date":"2026-10-11","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":10,"workstream":"Greenfield","id":"seed-0054"},{"date":"2026-10-11","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":330,"submitted":336,"workstream":"PrepLab","id":"seed-0055"},{"date":"2026-10-12","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":22,"workstream":"Brownfield","id":"seed-0056"},{"date":"2026-10-12","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":7,"workstream":"Greenfield","id":"seed-0057"},{"date":"2026-10-12","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":7,"workstream":"Greenfield","id":"seed-0058"},{"date":"2026-10-12","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":6,"termite":5,"workstream":"Greenfield","id":"seed-0059"},{"date":"2026-10-12","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":341,"submitted":156,"workstream":"PrepLab","id":"seed-0060"},{"date":"2026-10-13","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":22,"workstream":"Brownfield","id":"seed-0061"},{"date":"2026-10-13","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":24,"workstream":"Brownfield","id":"seed-0062"},{"date":"2026-10-13","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":6,"workstream":"Greenfield","id":"seed-0063"},{"date":"2026-10-13","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":5,"workstream":"Greenfield","id":"seed-0064"},{"date":"2026-10-13","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":8,"workstream":"Greenfield","id":"seed-0065"},{"date":"2026-10-13","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":262,"submitted":255,"workstream":"PrepLab","id":"seed-0066"},{"date":"2026-10-14","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":31,"workstream":"Brownfield","id":"seed-0067"},{"date":"2026-10-14","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":19,"workstream":"Brownfield","id":"seed-0068"},{"date":"2026-10-14","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":9,"workstream":"Greenfield","id":"seed-0069"},{"date":"2026-10-14","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":8,"workstream":"Greenfield","id":"seed-0070"},{"date":"2026-10-14","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":8,"workstream":"Greenfield","id":"seed-0071"},{"date":"2026-10-14","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":361,"submitted":307,"workstream":"PrepLab","id":"seed-0072"},{"date":"2026-10-15","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":35,"workstream":"Brownfield","id":"seed-0073"},{"date":"2026-10-15","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":24,"workstream":"Brownfield","id":"seed-0074"},{"date":"2026-10-15","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":5,"workstream":"Greenfield","id":"seed-0075"},{"date":"2026-10-15","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":7,"workstream":"Greenfield","id":"seed-0076"},{"date":"2026-10-15","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":10,"workstream":"Greenfield","id":"seed-0077"},{"date":"2026-10-15","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":264,"submitted":245,"workstream":"PrepLab","id":"seed-0078"},{"date":"2026-10-16","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":36,"workstream":"Brownfield","id":"seed-0079"},{"date":"2026-10-16","site":"MR1 RC","source":"Allocated (Oct monthly)","metres":21,"challenge":"3 planned points outside boundary; close-out of scope to confirm.","action":"Resolve boundary exceptions and final records.","workstream":"Brownfield","id":"seed-0080"},{"date":"2026-10-16","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":7,"workstream":"Greenfield","id":"seed-0081"},{"date":"2026-10-16","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":6,"workstream":"Greenfield","id":"seed-0082"},{"date":"2026-10-16","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":11,"workstream":"Greenfield","id":"seed-0083"},{"date":"2026-10-16","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":299,"submitted":307,"workstream":"PrepLab","id":"seed-0084"},{"date":"2026-10-17","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":38,"workstream":"Brownfield","id":"seed-0085"},{"date":"2026-10-17","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":14,"termite":10,"workstream":"Greenfield","id":"seed-0086"},{"date":"2026-10-17","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":14,"termite":5,"workstream":"Greenfield","id":"seed-0087"},{"date":"2026-10-17","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":11,"workstream":"Greenfield","id":"seed-0088"},{"date":"2026-10-17","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":311,"submitted":283,"workstream":"PrepLab","id":"seed-0089"},{"date":"2026-10-18","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":37,"workstream":"Brownfield","id":"seed-0090"},{"date":"2026-10-18","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":7,"termite":7,"workstream":"Greenfield","id":"seed-0091"},{"date":"2026-10-18","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":20,"termite":5,"workstream":"Greenfield","id":"seed-0092"},{"date":"2026-10-18","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":11,"workstream":"Greenfield","id":"seed-0093"},{"date":"2026-10-18","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":331,"submitted":206,"workstream":"PrepLab","id":"seed-0094"},{"date":"2026-10-19","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":45,"workstream":"Brownfield","id":"seed-0095"},{"date":"2026-10-19","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":8,"workstream":"Greenfield","id":"seed-0096"},{"date":"2026-10-19","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":7,"workstream":"Greenfield","id":"seed-0097"},{"date":"2026-10-19","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":5,"termite":10,"workstream":"Greenfield","id":"seed-0098"},{"date":"2026-10-19","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":212,"submitted":260,"workstream":"PrepLab","id":"seed-0099"},{"date":"2026-10-20","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":41,"workstream":"Brownfield","id":"seed-0100"},{"date":"2026-10-20","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":11,"workstream":"Greenfield","id":"seed-0101"},{"date":"2026-10-20","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":10,"termite":7,"workstream":"Greenfield","id":"seed-0102"},{"date":"2026-10-20","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":11,"workstream":"Greenfield","id":"seed-0103"},{"date":"2026-10-20","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":168,"submitted":242,"workstream":"PrepLab","id":"seed-0104"},{"date":"2026-10-21","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":41,"workstream":"Brownfield","id":"seed-0105"},{"date":"2026-10-21","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":8,"workstream":"Greenfield","id":"seed-0106"},{"date":"2026-10-21","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":11,"termite":7,"workstream":"Greenfield","id":"seed-0107"},{"date":"2026-10-21","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":7,"termite":11,"workstream":"Greenfield","id":"seed-0108"},{"date":"2026-10-21","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":182,"submitted":288,"workstream":"PrepLab","id":"seed-0109"},{"date":"2026-10-22","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":26,"workstream":"Brownfield","id":"seed-0110"},{"date":"2026-10-22","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":7,"workstream":"Greenfield","id":"seed-0111"},{"date":"2026-10-22","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":18,"termite":8,"workstream":"Greenfield","id":"seed-0112"},{"date":"2026-10-22","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":6,"workstream":"Greenfield","id":"seed-0113"},{"date":"2026-10-22","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":253,"submitted":220,"workstream":"PrepLab","id":"seed-0114"},{"date":"2026-10-23","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":22,"workstream":"Brownfield","id":"seed-0115"},{"date":"2026-10-23","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":9,"workstream":"Greenfield","id":"seed-0116"},{"date":"2026-10-23","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":5,"workstream":"Greenfield","id":"seed-0117"},{"date":"2026-10-23","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":5,"workstream":"Greenfield","id":"seed-0118"},{"date":"2026-10-23","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":110,"workstream":"Mining","id":"seed-0119"},{"date":"2026-10-23","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":272,"submitted":168,"workstream":"PrepLab","id":"seed-0120"},{"date":"2026-10-24","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":46,"workstream":"Brownfield","id":"seed-0121"},{"date":"2026-10-24","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":14,"termite":10,"workstream":"Greenfield","id":"seed-0122"},{"date":"2026-10-24","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":18,"termite":8,"workstream":"Greenfield","id":"seed-0123"},{"date":"2026-10-24","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":7,"termite":5,"workstream":"Greenfield","id":"seed-0124"},{"date":"2026-10-24","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":110,"workstream":"Mining","id":"seed-0125"},{"date":"2026-10-24","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":243,"submitted":211,"workstream":"PrepLab","id":"seed-0126"},{"date":"2026-10-25","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":30,"workstream":"Brownfield","id":"seed-0127"},{"date":"2026-10-25","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":12,"termite":10,"workstream":"Greenfield","id":"seed-0128"},{"date":"2026-10-25","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":5,"workstream":"Greenfield","id":"seed-0129"},{"date":"2026-10-25","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":7,"workstream":"Greenfield","id":"seed-0130"},{"date":"2026-10-25","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":210,"submitted":188,"workstream":"PrepLab","id":"seed-0131"},{"date":"2026-10-26","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":34,"workstream":"Brownfield","id":"seed-0132"},{"date":"2026-10-26","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":8,"workstream":"Greenfield","id":"seed-0133"},{"date":"2026-10-26","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":17,"termite":6,"workstream":"Greenfield","id":"seed-0134"},{"date":"2026-10-26","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":9,"workstream":"Greenfield","id":"seed-0135"},{"date":"2026-10-26","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":309,"submitted":255,"workstream":"PrepLab","id":"seed-0136"},{"date":"2026-10-27","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":28,"workstream":"Brownfield","id":"seed-0137"},{"date":"2026-10-27","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":6,"workstream":"Greenfield","id":"seed-0138"},{"date":"2026-10-27","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":20,"termite":8,"workstream":"Greenfield","id":"seed-0139"},{"date":"2026-10-27","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":8,"termite":7,"workstream":"Greenfield","id":"seed-0140"},{"date":"2026-10-27","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":107,"workstream":"Mining","id":"seed-0141"},{"date":"2026-10-27","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":342,"submitted":183,"workstream":"PrepLab","id":"seed-0142"},{"date":"2026-10-28","site":"Kimwehulu RC","source":"Allocated (Oct monthly)","metres":24,"challenge":"Programme complete (12 holes / 536 m). 25 holes / 1,495 m infill proposed; drone flight coverage NR.","action":"Review assays and proposed infill.","workstream":"Brownfield","id":"seed-0143"},{"date":"2026-10-28","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":8,"workstream":"Greenfield","id":"seed-0144"},{"date":"2026-10-28","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":20,"termite":5,"workstream":"Greenfield","id":"seed-0145"},{"date":"2026-10-28","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":8,"workstream":"Greenfield","id":"seed-0146"},{"date":"2026-10-28","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":50,"workstream":"Mining","id":"seed-0147"},{"date":"2026-10-28","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":215,"submitted":322,"workstream":"PrepLab","id":"seed-0148"},{"date":"2026-10-29","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":8,"workstream":"Greenfield","id":"seed-0149"},{"date":"2026-10-29","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":15,"termite":5,"workstream":"Greenfield","id":"seed-0150"},{"date":"2026-10-29","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":10,"workstream":"Greenfield","id":"seed-0151"},{"date":"2026-10-29","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":19,"workstream":"Mining","id":"seed-0152"},{"date":"2026-10-29","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":319,"submitted":332,"workstream":"PrepLab","id":"seed-0153"},{"date":"2026-10-30","site":"Mutoshi North WRD","source":"Reported (Oct monthly)","metres":49,"holeId":"Hole 1","workstream":"Brownfield","id":"seed-0154"},{"date":"2026-10-30","site":"Mutoshi Stockpiles","source":"Reported (Oct monthly)","holeId":"R4","geology":"R4: 8 sampling points, 930 kg reported.","challenge":"R1-R3 checks ongoing. Core Shed receipt of these lots not confirmed by matching IDs.","action":"Reconcile sample IDs, dispatch and Core Shed receipt.","workstream":"Brownfield","id":"seed-0155"},{"date":"2026-10-30","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":9,"termite":6,"workstream":"Greenfield","id":"seed-0156"},{"date":"2026-10-30","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":11,"termite":8,"workstream":"Greenfield","id":"seed-0157"},{"date":"2026-10-30","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":10,"workstream":"Greenfield","id":"seed-0158"},{"date":"2026-10-30","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":0,"workstream":"Mining","id":"seed-0159"},{"date":"2026-10-30","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":262,"submitted":170,"workstream":"PrepLab","id":"seed-0160"},{"date":"2026-10-31","site":"Dianda RC","source":"Reported (Oct monthly)","metres":0,"challenge":"RC rig awaited; 8 platforms released.","action":"Confirm rig mobilisation and daily progress.","workstream":"Brownfield","id":"seed-0161"},{"date":"2026-10-31","site":"Makala R2 Dewatering","source":"Reported (Oct monthly)","geology":"Option A: 370 m proposed (dewatering / corridor review).","challenge":"Proposal is a study; completed drainage work not reported.","action":"Review option and confirm implementation status.","workstream":"Brownfield","id":"seed-0162"},{"date":"2026-10-31","site":"Mutoshi North WRD","source":"Reported (Oct monthly)","metres":100,"holeId":"Hole 2","challenge":"First hole 49 m; second 100 m. 17 platforms.","action":"Continue drilling; monitor actual metres.","workstream":"Brownfield","id":"seed-0163"},{"date":"2026-10-31","site":"Dianda Geochem","source":"Allocated (Oct monthly)","soil":11,"termite":8,"challenge":"28 duplicate termite IDs; 20 soil rows lack IDs and 5 dates need verification.","action":"Continue Zone 4 P1; resolve Zone 1 access.","workstream":"Greenfield","id":"seed-0164"},{"date":"2026-10-31","site":"Mutaka Geochem","source":"Allocated (Oct monthly)","soil":13,"termite":6,"challenge":"Several dates and 31 Oct termite entries lack IDs. Minimum documented.","action":"Reconcile complete field and laboratory registers.","workstream":"Greenfield","id":"seed-0165"},{"date":"2026-10-31","site":"Tombolo Geochem","source":"Allocated (Oct monthly)","soil":9,"challenge":"G01 complete. IDs 330 / 370 occur on two daily sheets; dates to reconcile.","action":"Continue G02 and reconcile unique samples.","workstream":"Greenfield","id":"seed-0166"},{"date":"2026-10-31","site":"Mupanja Mining","source":"Reported (Oct monthly)","trips":0,"challenge":"Selected reported shifts only; full October total unavailable. Fuel shortage.","action":"Restore fuel supply; reconcile monthly production.","workstream":"Mining","id":"seed-0167"},{"date":"2026-10-31","site":"Core Shed / PrepLab","source":"Allocated (Oct monthly)","received":260,"submitted":162,"challenge":"31 Oct: day preparation sheet 289 vs custody register 162 submitted. QC included; reconcile.","action":"Reconcile submissions, QC and shifts.","workstream":"PrepLab","id":"seed-0168"},{"date":"2026-11-01","site":"Mutoshi North WRD","source":"Derived (Oct close vs 13 Nov cumulative)","metres":75,"workstream":"Brownfield","id":"seed-0169"},{"date":"2026-11-01","site":"Dianda Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":38,"workstream":"Greenfield","id":"seed-0170"},{"date":"2026-11-01","site":"Mutaka Geochem","source":"Estimated (no split reported)","soil":12,"termite":4,"workstream":"Greenfield","id":"seed-0171"},{"date":"2026-11-01","site":"Tombolo Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":19,"termite":3,"workstream":"Greenfield","id":"seed-0172"},{"date":"2026-11-01","site":"Core Shed / PrepLab","source":"Derived / Estimated split","received":362,"submitted":265,"workstream":"PrepLab","id":"seed-0173"},{"date":"2026-11-02","site":"Mutoshi North WRD","source":"Derived (Oct close vs 13 Nov cumulative)","metres":75,"workstream":"Brownfield","id":"seed-0174"},{"date":"2026-11-02","site":"Dianda Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":39,"workstream":"Greenfield","id":"seed-0175"},{"date":"2026-11-02","site":"Mutaka Geochem","source":"Estimated (no split reported)","soil":7,"termite":4,"workstream":"Greenfield","id":"seed-0176"},{"date":"2026-11-02","site":"Tombolo Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":17,"termite":4,"workstream":"Greenfield","id":"seed-0177"},{"date":"2026-11-02","site":"Core Shed / PrepLab","source":"Derived / Estimated split","received":352,"submitted":457,"workstream":"PrepLab","id":"seed-0178"},{"date":"2026-11-03","site":"Mutoshi North WRD","source":"Derived (Oct close vs 13 Nov cumulative)","metres":87,"workstream":"Brownfield","id":"seed-0179"},{"date":"2026-11-03","site":"Dianda Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":36,"workstream":"Greenfield","id":"seed-0180"},{"date":"2026-11-03","site":"Mutaka Geochem","source":"Estimated (no split reported)","soil":10,"termite":3,"workstream":"Greenfield","id":"seed-0181"},{"date":"2026-11-03","site":"Tombolo Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":16,"termite":4,"workstream":"Greenfield","id":"seed-0182"},{"date":"2026-11-03","site":"Core Shed / PrepLab","source":"Derived / Estimated split","received":258,"submitted":362,"workstream":"PrepLab","id":"seed-0183"},{"date":"2026-11-04","site":"Mutoshi North WRD","source":"Derived (Oct close vs 13 Nov cumulative)","metres":59,"workstream":"Brownfield","id":"seed-0184"},{"date":"2026-11-04","site":"Dianda Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":28,"workstream":"Greenfield","id":"seed-0185"},{"date":"2026-11-04","site":"Mutaka Geochem","source":"Estimated (no split reported)","soil":11,"termite":2,"workstream":"Greenfield","id":"seed-0186"},{"date":"2026-11-04","site":"Tombolo Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":22,"termite":5,"workstream":"Greenfield","id":"seed-0187"},{"date":"2026-11-04","site":"Core Shed / PrepLab","source":"Derived / Estimated split","received":297,"submitted":319,"workstream":"PrepLab","id":"seed-0188"},{"date":"2026-11-05","site":"Mutoshi North WRD","source":"Derived (Oct close vs 13 Nov cumulative)","metres":56,"workstream":"Brownfield","id":"seed-0189"},{"date":"2026-11-05","site":"Dianda Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":41,"workstream":"Greenfield","id":"seed-0190"},{"date":"2026-11-05","site":"Mutaka Geochem","source":"Estimated (no split reported)","soil":9,"termite":2,"workstream":"Greenfield","id":"seed-0191"},{"date":"2026-11-05","site":"Tombolo Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":26,"termite":2,"workstream":"Greenfield","id":"seed-0192"},{"date":"2026-11-05","site":"Core Shed / PrepLab","source":"Derived / Estimated split","received":292,"submitted":333,"workstream":"PrepLab","id":"seed-0193"},{"date":"2026-11-06","site":"Mutoshi North WRD","source":"Derived (Oct close vs 13 Nov cumulative)","metres":52,"workstream":"Brownfield","id":"seed-0194"},{"date":"2026-11-06","site":"Dianda Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":28,"workstream":"Greenfield","id":"seed-0195"},{"date":"2026-11-06","site":"Mutaka Geochem","source":"Estimated (no split reported)","soil":11,"termite":3,"workstream":"Greenfield","id":"seed-0196"},{"date":"2026-11-06","site":"Tombolo Geochem","source":"Derived (Oct close vs 13 Nov cumulative)","soil":22,"termite":3,"workstream":"Greenfield","id":"seed-0197"},{"date":"2026-11-06","site":"Core Shed / PrepLab","source":"Derived / Estimated split","received":218,"submitted":406,"workstream":"PrepLab","id":"seed-0198"},{"date":"2026-11-07","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":2.7,"recovered":1.97,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0199"},{"date":"2026-11-07","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":62,"workstream":"Brownfield","id":"seed-0200"},{"date":"2026-11-07","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":16,"workstream":"Greenfield","id":"seed-0201"},{"date":"2026-11-07","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":10,"termite":3,"workstream":"Greenfield","id":"seed-0202"},{"date":"2026-11-07","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":19,"workstream":"Greenfield","id":"seed-0203"},{"date":"2026-11-07","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":85,"submitted":171,"workstream":"PrepLab","id":"seed-0204"},{"date":"2026-11-08","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":5.64,"recovered":2.14,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0205"},{"date":"2026-11-08","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":76,"workstream":"Brownfield","id":"seed-0206"},{"date":"2026-11-08","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":21,"workstream":"Greenfield","id":"seed-0207"},{"date":"2026-11-08","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":10,"termite":3,"workstream":"Greenfield","id":"seed-0208"},{"date":"2026-11-08","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":18,"workstream":"Greenfield","id":"seed-0209"},{"date":"2026-11-08","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":142,"submitted":242,"workstream":"PrepLab","id":"seed-0210"},{"date":"2026-11-09","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":2.47,"recovered":2.25,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0211"},{"date":"2026-11-09","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":37,"workstream":"Brownfield","id":"seed-0212"},{"date":"2026-11-09","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":19,"workstream":"Greenfield","id":"seed-0213"},{"date":"2026-11-09","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":12,"termite":3,"workstream":"Greenfield","id":"seed-0214"},{"date":"2026-11-09","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":16,"workstream":"Greenfield","id":"seed-0215"},{"date":"2026-11-09","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":176,"submitted":255,"workstream":"PrepLab","id":"seed-0216"},{"date":"2026-11-10","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":5.08,"recovered":1.97,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0217"},{"date":"2026-11-10","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":61,"workstream":"Brownfield","id":"seed-0218"},{"date":"2026-11-10","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":13,"workstream":"Greenfield","id":"seed-0219"},{"date":"2026-11-10","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":12,"termite":2,"workstream":"Greenfield","id":"seed-0220"},{"date":"2026-11-10","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":17,"workstream":"Greenfield","id":"seed-0221"},{"date":"2026-11-10","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":138,"submitted":139,"workstream":"PrepLab","id":"seed-0222"},{"date":"2026-11-11","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":2.88,"recovered":1.32,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0223"},{"date":"2026-11-11","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":35,"workstream":"Brownfield","id":"seed-0224"},{"date":"2026-11-11","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":20,"workstream":"Greenfield","id":"seed-0225"},{"date":"2026-11-11","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":10,"termite":3,"workstream":"Greenfield","id":"seed-0226"},{"date":"2026-11-11","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":19,"workstream":"Greenfield","id":"seed-0227"},{"date":"2026-11-11","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":126,"submitted":196,"workstream":"PrepLab","id":"seed-0228"},{"date":"2026-11-12","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":4.68,"recovered":1.95,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0229"},{"date":"2026-11-12","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":45,"workstream":"Brownfield","id":"seed-0230"},{"date":"2026-11-12","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":16,"workstream":"Greenfield","id":"seed-0231"},{"date":"2026-11-12","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":10,"termite":4,"workstream":"Greenfield","id":"seed-0232"},{"date":"2026-11-12","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":18,"workstream":"Greenfield","id":"seed-0233"},{"date":"2026-11-12","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":184,"submitted":229,"workstream":"PrepLab","id":"seed-0234"},{"date":"2026-11-13","site":"Mulusonoi DD","source":"Allocated (7-13 Nov weekly)","metres":2.85,"recovered":2.71,"holeId":"MLDD015 / MLDD016","challenge":"Weekly core recovery averaged 54.4% across 26.30 m, below the 90% target. Machine checks and repairs reduced drilling time.","action":"Provide PQ and triple-tube equipment; verify DD recovery after equipment changes.","workstream":"Brownfield","id":"seed-0235"},{"date":"2026-11-13","site":"Mutoshi North WRD","source":"Allocated (7-13 Nov weekly)","metres":55,"challenge":"One hole closed at 79 m and one paused at 50 m due to water inflow.","action":"Continue WRD drilling and resume SMNRC003 once water inflow is controlled.","workstream":"Brownfield","id":"seed-0236"},{"date":"2026-11-13","site":"Dianda Geochem","source":"Allocated (7-13 Nov weekly)","soil":17,"challenge":"Rain disrupted access to sampling areas. Teams need boots and waterproof clothing.","action":"Continue soil sampling in Dianda Zone 4.","workstream":"Greenfield","id":"seed-0237"},{"date":"2026-11-13","site":"Mutaka Geochem","source":"Allocated (7-13 Nov weekly)","soil":7,"termite":2,"challenge":"Rain disrupted access to sampling areas.","action":"Shift Mutaka sampling to Zone 3 after completing Zone 2.","workstream":"Greenfield","id":"seed-0238"},{"date":"2026-11-13","site":"Tombolo Geochem","source":"Allocated (7-13 Nov weekly)","termite":9,"challenge":"Rain disrupted access to sampling areas.","action":"Continue termite sampling at Tombolo.","workstream":"Greenfield","id":"seed-0239"},{"date":"2026-11-13","site":"Core Shed / PrepLab","source":"Allocated (7-13 Nov weekly)","received":139,"submitted":197,"pending":2163,"challenge":"Oven and fan availability limits drying capacity and slows clearance of the submission backlog.","action":"Prioritise oven repairs and fan motor replacement; prioritise pending batches.","workstream":"PrepLab","id":"seed-0240"},{"date":"2026-11-14","site":"Dianda RC","source":"Estimated (backed out of 73 m)","metres":19,"holeId":"PBH-19","workstream":"Brownfield","id":"seed-0241"},{"date":"2026-11-14","site":"Mulusonoi DD","source":"Derived (13 Nov vs 17 Nov cumulative)","metres":21.04,"recovered":11.72,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0242"},{"date":"2026-11-14","site":"Mutoshi North WRD","source":"Derived (13 Nov vs 17 Nov cumulative)","metres":48,"workstream":"Brownfield","id":"seed-0243"},{"date":"2026-11-14","site":"Dianda Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","soil":22,"workstream":"Greenfield","id":"seed-0244"},{"date":"2026-11-14","site":"Mutaka Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","termite":5,"workstream":"Greenfield","id":"seed-0245"},{"date":"2026-11-14","site":"Tombolo Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","soil":17,"workstream":"Greenfield","id":"seed-0246"},{"date":"2026-11-14","site":"Core Shed / PrepLab","source":"Derived (13 Nov vs 17 Nov cumulative)","received":493,"submitted":398,"workstream":"PrepLab","id":"seed-0247"},{"date":"2026-11-15","site":"Dianda RC","source":"Estimated (backed out of 73 m)","metres":25,"holeId":"PBH-19","workstream":"Brownfield","id":"seed-0248"},{"date":"2026-11-15","site":"Mulusonoi DD","source":"Derived (13 Nov vs 17 Nov cumulative)","metres":13.42,"recovered":17.23,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0249"},{"date":"2026-11-15","site":"Mutoshi North WRD","source":"Derived (13 Nov vs 17 Nov cumulative)","metres":55,"workstream":"Brownfield","id":"seed-0250"},{"date":"2026-11-15","site":"Dianda Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","soil":18,"workstream":"Greenfield","id":"seed-0251"},{"date":"2026-11-15","site":"Mutaka Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","termite":7,"workstream":"Greenfield","id":"seed-0252"},{"date":"2026-11-15","site":"Tombolo Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","soil":8,"workstream":"Greenfield","id":"seed-0253"},{"date":"2026-11-15","site":"Core Shed / PrepLab","source":"Derived (13 Nov vs 17 Nov cumulative)","received":487,"submitted":292,"workstream":"PrepLab","id":"seed-0254"},{"date":"2026-11-16","site":"Dianda RC","source":"Estimated (backed out of 73 m)","metres":16,"holeId":"PBH-19","workstream":"Brownfield","id":"seed-0255"},{"date":"2026-11-16","site":"Mulusonoi DD","source":"Derived (13 Nov vs 17 Nov cumulative)","metres":16.24,"recovered":12.79,"holeId":"MLDD015 / MLDD016","workstream":"Brownfield","id":"seed-0256"},{"date":"2026-11-16","site":"Mutoshi North WRD","source":"Derived (13 Nov vs 17 Nov cumulative)","metres":47,"workstream":"Brownfield","id":"seed-0257"},{"date":"2026-11-16","site":"Dianda Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","soil":20,"workstream":"Greenfield","id":"seed-0258"},{"date":"2026-11-16","site":"Mutaka Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","termite":7,"workstream":"Greenfield","id":"seed-0259"},{"date":"2026-11-16","site":"Tombolo Geochem","source":"Derived (13 Nov vs 17 Nov cumulative)","soil":12,"workstream":"Greenfield","id":"seed-0260"},{"date":"2026-11-16","site":"Core Shed / PrepLab","source":"Derived (13 Nov vs 17 Nov cumulative)","received":288,"submitted":381,"workstream":"PrepLab","id":"seed-0261"},{"date":"2026-11-17","site":"Dianda RC","source":"Reported (17 Nov daily)","holeId":"DIASRC019 / PBH-19","metres":13,"downtime":8.83,"geology":"QuickLog | Lower Mwashya dolomite. 60.00-67.00 m @ 7.00 m with malachite. 67.00-69.00 m @ 2.00 m in brecciated dolomite with malachite. Est. 0.8-1.0% Cu.","challenge":"Punctured air hose and blocked downhole hammer cost 8 h 50 min. PBH-19 has passed its original 60 m design depth.","action":"Confirm the revised target depth and end-of-hole decision. Complete the collar survey and check the next platform.","workstream":"Brownfield","id":"seed-0262"},{"date":"2026-11-17","site":"Mulusonoi DD","source":"Reported (17 Nov daily)","holeId":"MLDD015","metres":7.0,"recovered":6.15,"geology":"QuickLog | RSC dolomite. MLDD015: malachite 0.1-0.5% Cu, 30.57-32.25 m @ 1.68 m. Trace 35.42-35.70 m @ 0.28 m.","action":"Continue to EOH; verify recovery within the orebody; supply HQ boxes.","workstream":"Brownfield","id":"seed-0263"},{"date":"2026-11-17","site":"Mulusonoi DD","source":"Reported (17 Nov daily)","holeId":"MLDD016","metres":0.5,"recovered":0.5,"downtime":8.5,"geology":"MLDD016: malachite and black oxides (>0.5% Cu), 32.27-39.50 m @ 7.23 m. Co grade unreported.","challenge":"MLDD016 had no water from 07:30 to 16:00. Only one hour of drilling was reported. Orebody recovery remains to be verified.","action":"Restore a reliable water supply. Continue both holes to EOH, verify recovery within the orebody for each hole and supply HQ boxes.","workstream":"Brownfield","id":"seed-0264"},{"date":"2026-11-17","site":"Mutoshi North WRD","source":"Reported (17 Nov daily)","holeId":"SMNRC012 / PBH_ST021","metres":100,"downtime":1.83,"geology":"SMNRC012: red-brown to dark-grey RC chips. Malachite and heterogenite traces. Field estimates: 0.1-0.5% Cu and <0.1% Co.","challenge":"ST014 stopped at 79 m due to water inflow and collapse. ST020 was inaccessible. Hammer failure cost 1 h 50 min on 17 Nov.","action":"Close the phase register. Field log identifies ST021 as SMNRC012. Verify the completion date in the final register.","workstream":"Brownfield","id":"seed-0265"},{"date":"2026-11-17","site":"Dianda Geochem","source":"Reported (17 Nov daily)","holeId":"Zone 4 / P1","soil":30,"geology":"Zone 4: clay at sampling and mapping sites. 30 geological observations. Soil Cu: 81 / 2,605 / 166 (n=324).","challenge":"Morning rain disrupted work. Of 40 sites left in Zone 4 / P1, 16 are in swamps.","action":"Dispatch the prepared soils, continue the accessible Zone 4 sites and log the 30 mapping observations.","workstream":"Greenfield","id":"seed-0266"},{"date":"2026-11-17","site":"Mutaka Geochem","source":"Reported (17 Nov daily)","holeId":"Zone 3","termite":10,"geology":"Historical XRF >0 ppm min/max/mean - Soil Cu: 97 / 2,387 / 212 (n=463); Termite Cu: 90 / 691 / 163 (n=163).","challenge":"Wet-weather PPE remains outstanding.","action":"Continue termite sampling in Zone 3 and check batches before dispatch.","workstream":"Greenfield","id":"seed-0267"},{"date":"2026-11-17","site":"Tombolo Geochem","source":"Reported (17 Nov daily)","holeId":"Block G05 (S22126TB676-S22126TB703)","soil":28,"geology":"G05: pisolitic laterite and clay. Soil Cu: 86 / 5,267 / 221 (n=142).","challenge":"The 26 unallocated soils still need block verification.","action":"Close G05 soil sampling and confirm the next block. Reconcile the 26 unallocated samples against the detailed register.","workstream":"Greenfield","id":"seed-0268"},{"date":"2026-11-17","site":"Mupanja Mining","source":"Reported (17 Nov daily)","holeId":"1,300 mRL","trips":107,"waste":3030,"co":180,"downtime":2,"geology":"Cobalt ore grade unreported. 101 waste trips | 6 cobalt ore trips.","challenge":"Kobelco was down from 07:45 to 09:45. The Hitachi excavator remains at Makala.","action":"Coordinate return of the Hitachi and schedule preventive maintenance on the active fleet.","workstream":"Mining","id":"seed-0269"},{"date":"2026-11-17","site":"Core Shed / PrepLab","source":"Reported (17 Nov daily)","submitted":241,"pending":2670,"geology":"XRF and ICP results pending. Lab pending: XRF 241; ICP 357.","challenge":"Large oven electrical fault; small oven fan out. Both LM units and both Terminator crushers remain down. Daily intake not confirmed.","action":"Assign maintenance support to restore capacity and reconcile intake.","workstream":"PrepLab","id":"seed-0270"}]};
+const STORE_KEY = 'exploration-dashboard-v1';
+const APP_ID = 'exploration-activities-dashboard';
+
+/* ---------- domain definitions (derived from the Daily / Weekly / Monthly reports) ---------- */
+const WS = ['Brownfield', 'Greenfield', 'PrepLab', 'Mining'];
+const WS_LABEL = {Brownfield: 'Brownfield Drilling', Greenfield: 'Greenfield Sampling', PrepLab: 'Core Shed / PrepLab', Mining: 'Mining Operations'};
+const WS_ALIASES = {
+  brownfield: 'Brownfield', brownfielddrilling: 'Brownfield', drilling: 'Brownfield', brownfieldrc: 'Brownfield',
+  greenfield: 'Greenfield', greenfieldsampling: 'Greenfield', geochemistry: 'Greenfield', geochem: 'Greenfield', greenfieldsoilsampling: 'Greenfield',
+  preplab: 'PrepLab', corshed: 'PrepLab', coreshed: 'PrepLab', coreshedpreplab: 'PrepLab', preplabcoreshed: 'PrepLab', laboratory: 'PrepLab', lab: 'PrepLab',
+  mining: 'Mining', miningoperations: 'Mining', mine: 'Mining'
+};
+
+// Upload template columns. `aliases` let slightly different headers still map.
+const FIELDS = [
+  {key: 'date', label: 'Date', type: 'date', req: true, desc: 'Report date. YYYY-MM-DD, DD/MM/YYYY, 17 Nov 2026 or an Excel date.', aliases: ['day', 'report date', 'reportdate']},
+  {key: 'workstream', label: 'Workstream', type: 'ws', desc: 'Brownfield, Greenfield, PrepLab or Mining. Optional for sites already set up.', aliases: ['department', 'category', 'section', 'area']},
+  {key: 'site', label: 'Site', type: 'text', req: true, desc: 'Site / project name, e.g. "Mulusonoi DD", "Tombolo Geochem".', aliases: ['project', 'site / workstream', 'location', 'site name']},
+  {key: 'activity', label: 'Activity', type: 'text', desc: 'Optional description (Diamond drilling, Geochemistry…).', aliases: ['programme', 'activity type']},
+  {key: 'holeId', label: 'Hole / Block ID', type: 'text', desc: 'Hole, block or zone reference(s).', aliases: ['hole id', 'hole', 'block', 'zone', 'hole/block', 'hole block id', 'holeid']},
+  {key: 'drillType', label: 'Drill Type', type: 'text', desc: 'DD or RC (used when a new drilling site is created).', aliases: ['type', 'method', 'drilltype']},
+  {key: 'metres', label: 'Metres Drilled', type: 'num', unit: 'm', desc: 'Metres drilled on the day.', aliases: ['meters drilled', 'metres', 'meters', 'm drilled', 'drilled m', 'drilled (m)', 'metres drilled (m)']},
+  {key: 'recovered', label: 'Core Recovered (m)', type: 'num', unit: 'm', desc: 'DD only: core recovered over the drilled interval.', aliases: ['recovered', 'core recovered', 'recovered m', 'core recovery m']},
+  {key: 'soil', label: 'Soil Samples', type: 'num', desc: 'Soil samples collected.', aliases: ['soil', 'soils']},
+  {key: 'termite', label: 'Termite Samples', type: 'num', desc: 'Termite-mound samples collected.', aliases: ['termite', 'termites', 'termite mounds', 'mound samples', 'mounds']},
+  {key: 'received', label: 'Samples Received', type: 'num', desc: 'Core Shed / PrepLab receipts.', aliases: ['received', 'receipts']},
+  {key: 'submitted', label: 'Samples Submitted', type: 'num', desc: 'Submitted to laboratory, incl. QA/QC and CRM.', aliases: ['submitted', 'submitted incl qaqc', 'samples submitted incl qa qc', 'submissions']},
+  {key: 'pending', label: 'Pending Preparation', type: 'num', desc: 'Backlog snapshot at end of day (not summed).', aliases: ['pending', 'backlog', 'pending prep', 'samples pending']},
+  {key: 'trips', label: 'Truck Trips', type: 'num', desc: 'Mining truck trips.', aliases: ['trips', 'truck trips']},
+  {key: 'waste', label: 'Waste (t)', type: 'num', unit: 't', desc: 'Waste tonnes (estimated).', aliases: ['waste', 'waste t', 'waste tonnes']},
+  {key: 'cu', label: 'Cu Ore (t)', type: 'num', unit: 't', desc: 'Copper ore tonnes.', aliases: ['cu ore', 'cu ore t', 'copper ore']},
+  {key: 'co', label: 'Co Ore (t)', type: 'num', unit: 't', desc: 'Cobalt ore tonnes.', aliases: ['co ore', 'co ore t', 'cobalt ore']},
+  {key: 'downtime', label: 'Downtime (h)', type: 'num', unit: 'h', desc: 'Equipment / operational downtime hours.', aliases: ['downtime', 'downtime hours', 'lost hours']},
+  {key: 'geology', label: 'Geology / Results', type: 'text', desc: 'Geology & analytical results.', aliases: ['geology', 'geology & analytical results', 'geology and analytical results', 'results']},
+  {key: 'challenge', label: 'Challenge', type: 'text', desc: 'Challenge / constraint.', aliases: ['challenges', 'constraint', 'variance / constraints', 'issue']},
+  {key: 'action', label: 'Action / Next Step', type: 'text', desc: 'Action / next step.', aliases: ['action', 'next step', 'actions', 'action next step']},
+  {key: 'source', label: 'Source', type: 'text', desc: 'Optional. Defaults to the uploaded file name.', aliases: []}
+];
+const FIELD = Object.fromEntries(FIELDS.map(f => [f.key, f]));
+const NUM_KEYS = FIELDS.filter(f => f.type === 'num').map(f => f.key);
+// Carried-in balances (activity before the first record) per metric
+const OPEN = {metres: 'openM', recovered: 'openRecM', soil: 'openSoil', termite: 'openTermite', received: 'openReceived', submitted: 'openSubmitted', trips: 'openTrips', waste: 'openWaste', cu: 'openCu', co: 'openCo'};
+
+// Metrics available to the trend charts
+const METRICS = {
+  metres: {label: 'Metres drilled', keys: ['metres'], unit: 'm', ws: 'Brownfield'},
+  samples: {label: 'Samples collected (soil + termite)', keys: ['soil', 'termite'], unit: '', ws: 'Greenfield'},
+  soil: {label: 'Soil samples', keys: ['soil'], unit: '', ws: 'Greenfield'},
+  termite: {label: 'Termite samples', keys: ['termite'], unit: '', ws: 'Greenfield'},
+  received: {label: 'Samples received (PrepLab)', keys: ['received'], unit: '', ws: 'PrepLab'},
+  submitted: {label: 'Samples submitted (PrepLab)', keys: ['submitted'], unit: '', ws: 'PrepLab'},
+  trips: {label: 'Truck trips', keys: ['trips'], unit: '', ws: 'Mining'},
+  tonnes: {label: 'Tonnes moved (waste + ore)', keys: ['waste', 'cu', 'co'], unit: 't', ws: 'Mining'},
+  downtime: {label: 'Downtime hours', keys: ['downtime'], unit: 'h', ws: null}
+};
+
+/* ---------- state ---------- */
+let DB = {sites: [], records: [], settings: {weekStart: 6, sampleBannerDismissed: false}, log: [], isSample: false};
+const UI = {view: 'daily', period: {daily: null, weekly: null, monthly: null}, ws: 'All', site: 'All', from: '', to: '', metric: 'metres', tables: {}, printing: false, pending: []};
+
+/* ---------- storage: IndexedDB with localStorage fallback ---------- */
+const Store = {
+  idb: null,
+  open() {
+    return new Promise(res => {
+      try {
+        const rq = indexedDB.open('exploration-dashboard', 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+        rq.onsuccess = () => res(rq.result);
+        rq.onerror = () => res(null);
+        rq.onblocked = () => res(null);
+      } catch (e) { res(null); }
+    });
+  },
+  async load() {
+    if ('indexedDB' in window) this.idb = await this.open();
+    if (this.idb) {
+      const v = await new Promise(res => {
+        try {
+          const g = this.idb.transaction('kv').objectStore('kv').get(STORE_KEY);
+          g.onsuccess = () => res(g.result); g.onerror = () => res(undefined);
+        } catch (e) { res(undefined); }
+      });
+      if (v) return v;
+    }
+    try { const s = localStorage.getItem(STORE_KEY); if (s) return JSON.parse(s); } catch (e) {}
+    return null;
+  },
+  async save(data) {
+    if (this.idb) {
+      const ok = await new Promise(res => {
+        try {
+          const tx = this.idb.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put(data, STORE_KEY);
+          tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false);
+        } catch (e) { res(false); }
+      });
+      if (ok) return true;
+    }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); return true; } catch (e) { return false; }
+  },
+  engine() { return this.idb ? 'IndexedDB' : 'localStorage'; }
+};
+async function persist(changed = true) {
+  if (changed) { DB.updatedAt = new Date().toISOString(); Sync.meta.dirty = true; Sync.saveMeta(); }
+  const ok = await Store.save(DB);
+  if (!ok) toast('⚠ Could not save to browser storage. Export a backup now.');
+  updateStorePill();
+  if (changed) Sync.schedule();
+  return ok;
+}
+
+/* =====================================================================
+   ONLINE SHARING VIA GITHUB
+   The shared copy of the data is a file (data.json) in the same GitHub
+   repository as this page. Every visitor loads it when the page opens.
+   Uploaders publish changes with a GitHub token that stays in their own
+   browser only (never in this file or in the repository).
+   ===================================================================== */
+const b64enc = str => { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+const b64dec = b64 => { const bin = atob(String(b64).replace(/\s/g, '')); return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); };
+const fmtStamp = iso => { if (!iso) return '—'; const d = new Date(iso); if (isNaN(d)) return '—'; return `${d.getDate()} ${MON[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const versionOf = d => (d && (d.updatedAt || d.exportedAt)) || '';
+function validData(d) {
+  return !!(d && Array.isArray(d.records) && Array.isArray(d.sites) &&
+    d.records.every(r => r && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.site));
+}
+function normalizeDB(d) {
+  return {
+    sites: d.sites,
+    records: d.records.map(r => ({...r, id: r.id || uid(), workstream: r.workstream || (d.sites.find(x => x.site === r.site) || {}).workstream || 'Brownfield'})),
+    settings: {weekStart: 6, sampleBannerDismissed: false, ...(d.settings || {})},
+    log: Array.isArray(d.log) ? d.log : [], isSample: !!d.isSample, updatedAt: versionOf(d)
+  };
+}
+const Sync = {
+  cfg: {owner: '', repo: '', branch: 'main', path: 'data.json', token: '', auto: true},
+  meta: {version: '', dirty: false, lastError: ''},
+  shared: false, conflict: false, publishing: false,
+  hosted: /^https?:$/.test(location.protocol),
+  load() {
+    try { Object.assign(this.cfg, JSON.parse(localStorage.getItem('xd-sync-cfg') || '{}')); } catch (e) {}
+    try { Object.assign(this.meta, JSON.parse(localStorage.getItem('xd-sync-meta') || '{}')); } catch (e) {}
+    // On GitHub Pages the owner and repository can be read from the address
+    const h = location.hostname.toLowerCase();
+    if (h.endsWith('.github.io')) {
+      const seg = location.pathname.split('/').filter(Boolean)[0];
+      if (!this.cfg.owner) this.cfg.owner = h.split('.')[0];
+      if (!this.cfg.repo) this.cfg.repo = seg && !/\.html?$/i.test(seg) ? seg : h;
+    }
+  },
+  saveCfg() { try { localStorage.setItem('xd-sync-cfg', JSON.stringify(this.cfg)); } catch (e) {} },
+  saveMeta() { try { localStorage.setItem('xd-sync-meta', JSON.stringify(this.meta)); } catch (e) {} },
+  canPublish() { return !!(this.cfg.owner.trim() && this.cfg.repo.trim() && this.cfg.token.trim()); },
+  payload() {
+    return {app: APP_ID, version: 1, updatedAt: DB.updatedAt || new Date().toISOString(), sites: DB.sites, records: DB.records,
+      settings: DB.settings, log: DB.log.slice(0, 200), isSample: !!DB.isSample};
+  },
+  // Read the shared file as published on the website (no token needed)
+  async fetchShared() {
+    if (!this.hosted) return null;
+    try {
+      const name = this.cfg.path.split('/').pop() || 'data.json';
+      const r = await fetch(name + '?v=' + Date.now(), {cache: 'no-store'});
+      if (!r.ok) return null;
+      const d = await r.json();
+      return validData(d) ? d : null;
+    } catch (e) { return null; }
+  },
+  headers(extra = {}) { return {Authorization: 'Bearer ' + this.cfg.token.trim(), Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...extra}; },
+  repoUrl(p = '') { return `https://api.github.com/repos/${encodeURIComponent(this.cfg.owner.trim())}/${encodeURIComponent(this.cfg.repo.trim())}${p}`; },
+  fileUrl() { return this.repoUrl('/contents/' + this.cfg.path.trim().replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')); },
+  async err(r) {
+    let m = ''; try { m = (await r.json()).message || ''; } catch (e) {}
+    const who = `${this.cfg.owner}/${this.cfg.repo}`;
+    const map = {401: 'The token is invalid or has expired. Create a new one and paste it again.',
+      403: `The token is not allowed to change ${who}. It needs Contents: Read and write on this repository.`,
+      404: `Repository ${who} (branch "${this.cfg.branch}") was not found, or the token was not given access to it.`,
+      409: 'The data file changed on GitHub while publishing. Click Publish again.',
+      422: `GitHub rejected the update. Check the branch name ("${this.cfg.branch}") and try again.`};
+    return new Error((map[r.status] || `GitHub returned error ${r.status}.`) + (m && !map[r.status] ? ` ${m}` : ''));
+  },
+  async test() {
+    let r; try { r = await fetch(this.repoUrl(), {headers: this.headers(), cache: 'no-store'}); } catch (e) { throw new Error('Could not reach GitHub. Check your internet connection.'); }
+    if (!r.ok) throw await this.err(r);
+    const j = await r.json();
+    if (!j.permissions || !j.permissions.push) throw new Error('The token can read this repository but cannot save to it. Give it Contents: Read and write.');
+    return j;
+  },
+  async getRemote() {
+    const q = '?ref=' + encodeURIComponent(this.cfg.branch.trim()) + '&t=' + Date.now();
+    const r = await fetch(this.fileUrl() + q, {headers: this.headers(), cache: 'no-store'});
+    if (r.status === 404) return {sha: null, data: null};
+    if (!r.ok) throw await this.err(r);
+    const j = await r.json();
+    let text = j.content ? b64dec(j.content) : null;
+    if (text == null) { // files over 1 MB come back without inline content
+      const rr = await fetch(this.fileUrl() + q, {headers: this.headers({Accept: 'application/vnd.github.raw+json'}), cache: 'no-store'});
+      if (!rr.ok) throw await this.err(rr);
+      text = await rr.text();
+    }
+    let data = null; try { data = JSON.parse(text); } catch (e) {}
+    return {sha: j.sha, data: validData(data) ? data : null};
+  },
+  async publish({silent = false} = {}) {
+    if (!this.canPublish() || this.publishing) return false;
+    clearTimeout(this._t);
+    if (!DB.updatedAt) { DB.updatedAt = new Date().toISOString(); await Store.save(DB); }
+    this.publishing = true; syncUI();
+    try {
+      const remote = await this.getRemote();
+      const rv = versionOf(remote.data);
+      if (rv && rv !== this.meta.version && rv !== DB.updatedAt && rv > (this.meta.version || '')) {
+        this.publishing = false; syncUI();
+        const mine = await confirmBox('Someone else published newer data',
+          `The shared data on GitHub was updated at ${fmtStamp(rv)}, after this computer last loaded it. Publish your version anyway (it replaces theirs)? Choose Cancel to load their version instead. Your unpublished changes on this computer would then be lost.`, 'Publish mine');
+        if (!mine) { await adoptShared(remote.data); toast('Loaded the latest shared data.'); return false; }
+        this.publishing = true; syncUI();
+      }
+      const body = {message: `Dashboard data update: ${DB.records.length} records`, content: b64enc(JSON.stringify(this.payload())), branch: this.cfg.branch.trim()};
+      if (remote.sha) body.sha = remote.sha;
+      const r = await fetch(this.fileUrl(), {method: 'PUT', headers: this.headers({'Content-Type': 'application/json'}), body: JSON.stringify(body)});
+      if (!r.ok) throw await this.err(r);
+      this.meta.version = DB.updatedAt; this.meta.dirty = false; this.meta.lastError = ''; this.saveMeta();
+      this.shared = true; this.conflict = false;
+      toast(silent ? 'Shared online ✓ Other computers will see it in 1–2 minutes.' : 'Published to GitHub ✓ Other computers will see it in 1–2 minutes (after GitHub refreshes the site).');
+      return true;
+    } catch (e) {
+      this.meta.lastError = e.message || String(e); this.saveMeta();
+      toast('Not shared: ' + this.meta.lastError);
+      return false;
+    } finally { this.publishing = false; syncUI(); }
+  },
+  schedule() {
+    if (this.cfg.auto && this.canPublish()) { clearTimeout(this._t); this._t = setTimeout(() => this.publish({silent: true}), 2500); }
+    syncUI();
+  },
+  // Pick up data published from other computers (on open, every few minutes, and when the tab regains focus)
+  async check() {
+    const d = await this.fetchShared(); if (!d) return false;
+    this.shared = true;
+    const v = versionOf(d);
+    if (v && v > (this.meta.version || '')) {
+      if (!this.meta.dirty) { await adoptShared(d); toast(`Latest shared data loaded (updated ${fmtStamp(v)}).`); return true; }
+      this.conflict = true; syncUI();
+    }
+    return false;
+  }
+};
+async function adoptShared(d, {quiet = false} = {}) {
+  DB = normalizeDB(d);
+  Sync.meta.version = versionOf(d); Sync.meta.dirty = false; Sync.saveMeta();
+  Sync.shared = true; Sync.conflict = false;
+  await Store.save(DB);
+  UI.period = {daily: null, weekly: null, monthly: null}; UI.tables = {};
+  if (!quiet) render();
+}
+function syncUI() { updateStorePill(); renderSyncBanner(); if (UI.view === 'data' && $('#sync-card')) renderSyncCard(); }
+function renderSyncBanner() {
+  const b = $('#sync-banner'); if (!b) return;
+  let h = '';
+  if (Sync.conflict) {
+    h = `<div class="banner warn no-print"><div class="grow"><b>Newer shared data is available.</b> Someone published from another computer, and this computer also has changes that are not shared yet.</div>
+      <button class="btn sm" data-action="sync-load">Load shared data (drop mine)</button>${Sync.canPublish() ? '<button class="btn sm primary" data-action="sync-publish">Publish mine</button>' : ''}</div>`;
+  } else if (Sync.publishing) {
+    h = `<div class="banner no-print"><div class="grow">Publishing to GitHub…</div></div>`;
+  } else if (Sync.meta.dirty && !Sync.canPublish()) {
+    h = `<div class="banner warn no-print"><div class="grow"><b>Your changes are only on this computer.</b> Other computers cannot see them yet. Connect the dashboard to your GitHub repository once (about 3 minutes), then every upload is shared automatically.</div>
+      <button class="btn sm primary" data-action="goto-sync">Set up online sharing</button></div>`;
+  } else if (Sync.meta.dirty) {
+    h = `<div class="banner warn no-print"><div class="grow"><b>Changes not shared yet.</b>${Sync.meta.lastError ? ' Last attempt failed: ' + esc(Sync.meta.lastError) : Sync.cfg.auto ? ' Publishing shortly…' : ' Automatic publishing is off.'}</div>
+      <button class="btn sm primary" data-action="sync-publish">Publish now</button></div>`;
+  }
+  b.innerHTML = h;
+}
+function renderSyncCard() {
+  const c = Sync.cfg, host = $('#sync-card'); if (!host) return;
+  const status = Sync.publishing ? '<span class="status ok">Publishing…</span>'
+    : Sync.meta.dirty ? `<span class="status no">✕ Changes not shared yet</span>`
+    : Sync.meta.version ? `<span class="status ok">✓ Shared · version ${esc(fmtStamp(Sync.meta.version))}</span>`
+    : '<span class="status no">Not shared yet</span>';
+  host.innerHTML = `
+    <div class="card-head"><div class="grow"><h3>Share online with other computers (GitHub)</h3>
+      <div class="card-sub">The data is saved as <b>${esc(c.path || 'data.json')}</b> in your GitHub repository. Anyone who opens the website sees it. Only people who upload need the token below.</div></div>${status}</div>
+    ${!Sync.hosted ? `<div class="banner warn" style="margin-bottom:12px"><div class="grow">This page is opened as a file from your computer. Online sharing only works on the hosted GitHub Pages address (https://…github.io/…).</div></div>` : ''}
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+      <label class="field"><span>GitHub owner (user or organisation)</span><input type="text" id="sy-owner" value="${esc(c.owner)}" placeholder="e.g. chemaf-exploration" autocomplete="off"></label>
+      <label class="field"><span>Repository</span><input type="text" id="sy-repo" value="${esc(c.repo)}" placeholder="e.g. exploration-dashboard" autocomplete="off"></label>
+      <label class="field"><span>Branch</span><input type="text" id="sy-branch" value="${esc(c.branch)}" autocomplete="off"></label>
+      <label class="field"><span>Data file path in repo</span><input type="text" id="sy-path" value="${esc(c.path)}" autocomplete="off"></label>
+      <label class="field" style="grid-column:span 2"><span>Access token (uploaders only)</span><input type="password" id="sy-token" value="${esc(c.token)}" placeholder="github_pat_…" autocomplete="off"></label>
+    </div>
+    <div style="display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;margin-top:12px">
+      <label class="check"><input type="checkbox" id="sy-auto" ${c.auto ? 'checked' : ''}> Publish automatically after every upload, edit or deletion</label>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="btn primary" data-action="sync-save">Save &amp; test connection</button>
+      <button class="btn" data-action="sync-publish" ${Sync.canPublish() ? '' : 'disabled'}>⇧ Publish now</button>
+      <button class="btn" data-action="sync-load">⇩ Load latest shared data</button>
+      ${c.token ? '<button class="btn danger" data-action="sync-forget">Remove token from this computer</button>' : ''}
+    </div>
+    ${Sync.meta.lastError ? `<div class="msg err" style="margin-top:8px">✕ ${esc(Sync.meta.lastError)}</div>` : ''}
+    <details class="mt" ${c.token ? '' : 'open'}><summary>How to get the access token (one time, about 3 minutes)</summary>
+      <ol style="margin:8px 0 0;padding-left:20px;line-height:1.7">
+        <li>Sign in to GitHub with the account that owns the repository. Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> (Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token).</li>
+        <li><b>Token name:</b> Exploration dashboard. <b>Expiration:</b> pick a date (for example 1 year). Set a reminder to renew it.</li>
+        <li><b>Repository access:</b> <i>Only select repositories</i>, then choose your dashboard repository.</li>
+        <li><b>Permissions → Repository permissions → Contents:</b> <i>Read and write</i>. Leave everything else as is.</li>
+        <li>Click <b>Generate token</b>, copy it (it starts with <code>github_pat_</code>), paste it above and click <b>Save &amp; test connection</b>.</li>
+      </ol>
+      <p class="kpi-sub" style="margin-top:8px">The token is stored only in this browser on this computer. It is never written into the website or the repository. Do this on each computer that uploads data. Viewers need nothing, they just open the link. After publishing, GitHub takes about 1–2 minutes to refresh the site. Other computers then load the new data automatically when the page is opened, every 3 minutes while it stays open, or when you click <b>Load latest shared data</b>.</p>
+    </details>`;
+}
+
+/* ---------- utilities ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const norm = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const isNum = v => typeof v === 'number' && isFinite(v);
+const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const NF0 = new Intl.NumberFormat('en-GB', {maximumFractionDigits: 0});
+const NF1 = new Intl.NumberFormat('en-GB', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+const NF2 = new Intl.NumberFormat('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+function fmt(v, dec) {
+  if (!isNum(v)) return '—';
+  if (dec === 0) return NF0.format(v);
+  if (dec === 1) return NF1.format(v);
+  if (dec === 2) return NF2.format(v);
+  return Math.abs(v - Math.round(v)) < 1e-9 ? NF0.format(v) : NF2.format(v);
+}
+const fmtPct = (v, d = 1) => isNum(v) ? (d === 0 ? NF0 : NF1).format(v) + '%' : '—';
+const fmtAxis = v => Math.abs(v) >= 10000 ? NF0.format(v / 1000) + 'K' : NF0.format(v);
+
+// Dates are handled as 'YYYY-MM-DD' strings with UTC arithmetic (no timezone drift)
+const toUTC = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+const fromUTC = t => new Date(t).toISOString().slice(0, 10);
+const addDays = (s, n) => fromUTC(toUTC(s) + n * 864e5);
+const dow = s => new Date(toUTC(s)).getUTCDay();
+const daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 864e5);
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const weekStartOf = s => addDays(s, -((dow(s) - DB.settings.weekStart + 7) % 7));
+const monthEnd = ym => { const [y, m] = ym.split('-').map(Number); return fromUTC(Date.UTC(y, m, 0)); };
+const fmtD = s => { if (!s) return '—'; const [y, m, d] = s.split('-').map(Number); return `${d} ${MON[m - 1]} ${y}`; };
+const fmtDs = s => { const [, m, d] = s.split('-').map(Number); return `${d} ${MON[m - 1]}`; };
+const fmtDlong = s => { const [y, m, d] = s.split('-').map(Number); return `${d} ${MONTH_FULL[m - 1]} ${y}`; };
+function fmtRange(a, b) {
+  if (a === b) return fmtD(a);
+  const [ya, ma, da] = a.split('-').map(Number), [yb, mb, db] = b.split('-').map(Number);
+  if (ya === yb && ma === mb) return `${da}–${db} ${MON[mb - 1]} ${yb}`;
+  if (ya === yb) return `${da} ${MON[ma - 1]} – ${db} ${MON[mb - 1]} ${yb}`;
+  return `${fmtD(a)} – ${fmtD(b)}`;
+}
+
+/* ---------- lookups ---------- */
+const siteCfg = name => DB.sites.find(s => s.site === name);
+const siteCfgCI = name => DB.sites.find(s => norm(s.site) === norm(name));
+const wsColor = ws => `var(--ws-${WS.includes(ws) ? ws : 'Brownfield'})`;
+const cssVar = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function seriesColor(i) { return i < 8 ? cssVar('--series-' + (i + 1)) : cssVar('--series-other'); }
+// Colour follows the entity: a site's colour is fixed by its position within its workstream
+function siteColor(site) {
+  const c = siteCfg(site); if (!c) return cssVar('--series-other');
+  const peers = DB.sites.filter(s => s.workstream === c.workstream);
+  return seriesColor(peers.indexOf(c));
+}
+const sum = (recs, keys) => { let t = 0; for (const r of recs) for (const k of keys) if (isNum(r[k])) t += r[k]; return t; };
+const hasAny = (recs, keys) => recs.some(r => keys.some(k => isNum(r[k])));
+const inRange = (r, a, b) => r.date >= a && r.date <= b;
+function scopedRecords() {
+  return DB.records.filter(r => (UI.ws === 'All' || r.workstream === UI.ws) && (UI.site === 'All' || r.site === UI.site));
+}
+function scopedSites() {
+  return DB.sites.filter(s => (UI.ws === 'All' || s.workstream === UI.ws) && (UI.site === 'All' || s.site === UI.site));
+}
+function cumulative(site, key, upto) {
+  const c = siteCfg(site); const open = c && isNum(+c[OPEN[key]]) ? +c[OPEN[key]] || 0 : 0;
+  return open + sum(DB.records.filter(r => r.site === site && r.date <= upto), [key]);
+}
+// Pending preparation is a stock, not a flow: take the latest snapshot ≤ date per site
+function pendingAt(upto, sites) {
+  let tot = null, when = null;
+  for (const s of sites) {
+    let best = null;
+    for (const r of DB.records) if (r.site === s && r.date <= upto && isNum(r.pending) && (!best || r.date > best.date)) best = r;
+    if (best) { tot = (tot || 0) + best.pending; if (!when || best.date > when) when = best.date; }
+  }
+  return {value: tot, date: when};
+}
+const allDates = () => [...new Set(DB.records.map(r => r.date))].sort();
+const lastDate = () => DB.records.reduce((m, r) => r.date > m ? r.date : m, '');
+const firstDate = () => DB.records.reduce((m, r) => !m || r.date < m ? r.date : m, '');
+
+/* ---------- periods ---------- */
+const VIEW_TYPE = {daily: 'day', weekly: 'week', monthly: 'month'};
+function periodKey(type, date) { return type === 'day' ? date : type === 'week' ? weekStartOf(date) : date.slice(0, 7); }
+function periodBounds(type, key) {
+  if (type === 'day') return [key, key];
+  if (type === 'week') return [key, addDays(key, 6)];
+  return [key + '-01', monthEnd(key)];
+}
+function prevKey(type, key) {
+  if (type === 'week') return addDays(key, -7);
+  if (type === 'month') { const [y, m] = key.split('-').map(Number); const d = new Date(Date.UTC(y, m - 2, 1)); return d.toISOString().slice(0, 7); }
+  return addDays(key, -1);
+}
+function periodLabel(type, key) {
+  if (type === 'day') { const s = fmtD(key); return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow(key)]} ${s}`; }
+  if (type === 'week') { const [a, b] = periodBounds(type, key); return fmtRange(a, b); }
+  const [y, m] = key.split('-').map(Number); return `${MONTH_FULL[m - 1]} ${y}`;
+}
+function periodsAvailable(type) {
+  const R = scopedRecords().filter(r => (!UI.from || r.date >= UI.from) && (!UI.to || r.date <= UI.to));
+  return [...new Set(R.map(r => periodKey(type, r.date)))].sort();
+}
+// Current window + comparison window. Partial periods (week/month to date) are compared
+// with the same number of days of the previous period, so the variance is like-for-like.
+function windowFor(type, key) {
+  let [a, b] = periodBounds(type, key);
+  const last = lastDate(); let partial = false;
+  if (type !== 'day' && last && b > last && a <= last) { b = last; partial = true; }
+  let pa, pb;
+  if (type === 'day') {
+    const ds = [...new Set(scopedRecords().map(r => r.date))].sort();
+    const i = ds.indexOf(key);
+    pa = pb = i > 0 ? ds[i - 1] : addDays(key, -1);
+  } else {
+    const pk = prevKey(type, key); const [ppa, ppb] = periodBounds(type, pk);
+    pa = ppa; pb = partial ? addDays(ppa, daysBetween(a, b)) : ppb;
+    if (pb > ppb) pb = ppb;
+  }
+  return {type, key, a, b, pa, pb, partial, days: daysBetween(a, b) + 1};
+}
+
+/* ---------- theme & charts ---------- */
+const charts = {};
+function destroyCharts() { for (const k in charts) { charts[k].destroy(); delete charts[k]; } }
+const hasChart = () => typeof window.Chart !== 'undefined';
+const valueLabelPlugin = {
+  id: 'valueLabels',
+  afterDatasetsDraw(chart, args, opts) {
+    if (!opts || !opts.enabled) return;
+    const {ctx} = chart; ctx.save();
+    ctx.font = `600 11px ${cssVar('--font') || 'sans-serif'}`; ctx.fillStyle = cssVar('--text');
+    const horiz = chart.options.indexAxis === 'y';
+    chart.data.datasets.forEach((ds, i) => {
+      if (!chart.isDatasetVisible(i)) return;
+      chart.getDatasetMeta(i).data.forEach((el, j) => {
+        const v = ds.data[j]; if (!isNum(v) || (v === 0 && !opts.showZero)) return;
+        const txt = opts.format ? opts.format(v) : fmt(v);
+        if (horiz) { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(txt, el.x + 6, el.y); }
+        else { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(txt, el.x, el.y - 4); }
+      });
+    });
+    ctx.restore();
+  }
+};
+function setupChartDefaults() {
+  if (!hasChart()) return;
+  Chart.defaults.font.family = cssVar('--font');
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = cssVar('--text-2');
+  Chart.defaults.borderColor = cssVar('--grid');
+  if (!Chart.registry.plugins.get('valueLabels')) Chart.register(valueLabelPlugin);
+}
+// Stacked bars: only the top-most visible non-zero segment gets the rounded data-end
+const topRadius = ctx => {
+  const {chart, dataIndex, datasetIndex} = ctx; const ds = chart.data.datasets;
+  for (let k = datasetIndex + 1; k < ds.length; k++) if (chart.isDatasetVisible(k) && +ds[k].data[dataIndex] > 0) return 0;
+  return 4;
+};
+function barDataset(label, data, color, {stacked = false, horizontal = false} = {}) {
+  return {
+    label, data, backgroundColor: color, hoverBackgroundColor: color,
+    borderColor: cssVar('--chart-surface'),
+    borderWidth: stacked ? (horizontal ? {right: 2, left: 0, top: 0, bottom: 0} : {top: 2, left: 0, right: 0, bottom: 0}) : 0,
+    borderSkipped: 'start', borderRadius: stacked ? topRadius : 4, maxBarThickness: 24,
+    categoryPercentage: 0.72, barPercentage: 0.88
+  };
+}
+function lineDataset(label, data, color) {
+  return {label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5,
+    pointHoverBorderWidth: 2, pointHoverBorderColor: cssVar('--chart-surface'), tension: 0.25, spanGaps: true, fill: false};
+}
+function chartOpts({horizontal = false, stacked = false, pct = false, legend = true, unit = '', labels = null, pad = null, max = null} = {}) {
+  const grid = cssVar('--grid'), t2 = cssVar('--text-2');
+  const valueAxis = {beginAtZero: true, stacked, max: max ?? undefined, grid: {color: grid, drawTicks: false}, border: {display: false},
+    ticks: {color: t2, padding: 6, maxTicksLimit: 6, callback: v => pct ? v + '%' : fmtAxis(v)}};
+  const catAxis = {stacked, grid: {display: false}, border: {color: grid}, ticks: {color: t2, autoSkip: true, maxRotation: 0, autoSkipPadding: 10}};
+  const u = unit ? ' ' + unit : '';
+  return {
+    responsive: true, maintainAspectRatio: false, indexAxis: horizontal ? 'y' : 'x', animation: {duration: UI.printing ? 0 : 250},
+    interaction: {mode: 'index', intersect: false, axis: horizontal ? 'y' : 'x'},
+    layout: {padding: pad || 0},
+    plugins: {
+      legend: {display: legend, position: 'top', align: 'start', labels: {color: cssVar('--text'), usePointStyle: true, pointStyle: 'rectRounded', boxWidth: 10, boxHeight: 10, padding: 14}},
+      tooltip: {backgroundColor: cssVar('--surface'), titleColor: cssVar('--text'), bodyColor: cssVar('--text-2'), borderColor: cssVar('--border'), borderWidth: 1,
+        padding: 10, boxPadding: 4, usePointStyle: true,
+        filter: it => it.raw !== 0 && it.raw !== null,
+        callbacks: {label: c => ` ${c.dataset.label}: ${pct ? fmtPct(c.raw) : fmt(c.raw)}${pct ? '' : u}`}},
+      valueLabels: labels || {enabled: false}
+    },
+    scales: horizontal ? {x: valueAxis, y: catAxis} : {x: catAxis, y: valueAxis}
+  };
+}
+function mkChart(id, config, isEmpty, emptyMsg) {
+  const box = document.getElementById(id); if (!box) return;
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  if (isEmpty) { box.innerHTML = `<div class="empty">${esc(emptyMsg || 'No data for the current selection.')}</div>`; return; }
+  if (!hasChart()) { box.innerHTML = `<div class="empty">Chart library not loaded — check your internet connection.</div>`; return; }
+  box.innerHTML = '<canvas role="img"></canvas>';
+  const canvas = box.firstChild; canvas.setAttribute('aria-label', box.dataset.label || 'chart');
+  charts[id] = new Chart(canvas, config);
+}
+
+/* ---------- UI helpers ---------- */
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 3200);
+}
+function confirmBox(title, body, okLabel = 'Confirm', danger = true) {
+  return new Promise(res => {
+    const m = $('#modal'); $('#modal-title').textContent = title; $('#modal-body').textContent = body;
+    const ok = $('#modal-ok'); ok.textContent = okLabel; ok.className = 'btn ' + (danger ? 'danger' : 'primary');
+    m.classList.add('open'); ok.focus();
+    const done = v => { m.classList.remove('open'); ok.onclick = null; $('#modal-cancel').onclick = null; m.onclick = null; document.removeEventListener('keydown', key); res(v); };
+    const key = e => { if (e.key === 'Escape') done(false); };
+    ok.onclick = () => done(true); $('#modal-cancel').onclick = () => done(false);
+    m.onclick = e => { if (e.target === m) done(false); };
+    document.addEventListener('keydown', key);
+  });
+}
+function download(name, content, type) {
+  const blob = content instanceof Blob ? content : new Blob([content], {type});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function updateStorePill() {
+  const n = DB.records.length;
+  const st = Sync.publishing ? 'publishing…' : Sync.meta.dirty ? (Sync.canPublish() ? 'not shared yet' : 'this computer only')
+    : (Sync.shared || Sync.canPublish()) && Sync.meta.version ? 'shared online · ' + fmtStamp(Sync.meta.version) : 'saved in this browser';
+  $('#store-pill').textContent = `${NF0.format(n)} records · ${st}`;
+}
+function deltaHTML(cur, prev, {goodUp = true, pp = false, vs = '', dec} = {}) {
+  if (!isNum(cur) || !isNum(prev)) return `<span class="delta flat">— <span class="vs">no comparison data</span></span>`;
+  let txt, dir;
+  if (pp) { const d = cur - prev; dir = Math.abs(d) < 0.05 ? 0 : Math.sign(d); txt = `${d >= 0 ? '+' : ''}${NF1.format(d)} pp`; }
+  else if (prev === 0) { dir = cur > 0 ? 1 : 0; txt = cur > 0 ? `+${fmt(cur, dec)} (new)` : 'no change'; }
+  else { const d = (cur - prev) / Math.abs(prev) * 100; dir = Math.abs(d) < 0.05 ? 0 : Math.sign(d); txt = `${d >= 0 ? '+' : ''}${NF1.format(d)}%`; }
+  const cls = dir === 0 ? 'flat' : ((dir > 0) === goodUp ? 'good' : 'bad');
+  const icon = dir > 0 ? '▲' : dir < 0 ? '▼' : '■';
+  const word = cls === 'good' ? 'improved' : cls === 'bad' ? 'worse' : 'unchanged';
+  return `<span class="delta ${cls}" title="${word}"><span aria-hidden="true">${icon}</span> ${txt} <span class="vs">${esc(vs)}</span></span>`;
+}
+
+/* =====================================================================
+   RENDERING — Daily / Weekly / Monthly share one period renderer
+   ===================================================================== */
+function render() {
+  destroyCharts();
+  setupChartDefaults();
+  // Inactive views are emptied so element ids stay unique (only one view is in the DOM at a time)
+  $$('.view').forEach(v => { v.classList.add('hidden'); if (v.id !== 'view-' + UI.view) v.innerHTML = ''; });
+  $$('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === UI.view)));
+  $('#filterbar').classList.toggle('hidden', UI.view === 'data');
+  const el = $('#view-' + UI.view); el.classList.remove('hidden');
+  renderSampleBanner(); renderSyncBanner();
+  if (UI.view === 'data') renderData(el);
+  else { syncFilters(); renderPeriodView(el, VIEW_TYPE[UI.view]); }
+  updateStorePill();
+}
+
+function renderSampleBanner() {
+  const b = $('#sample-banner');
+  if (DB.isSample && !DB.settings.sampleBannerDismissed && UI.view !== 'data') {
+    b.innerHTML = `<div class="banner no-print"><div class="grow"><b>Sample data loaded.</b> Daily rows rebuilt from your 17 Nov daily, 7–13 Nov weekly and October monthly reports. Rows marked
+      <i>Allocated</i>, <i>Derived</i> or <i>Estimated</i> split reported period totals across days. Totals match the reports. The <b>Source</b> column shows the basis for each row.</div>
+      <button class="btn sm" data-action="goto-data">Upload real data</button>
+      <button class="btn sm" data-action="dismiss-banner">Dismiss</button></div>`;
+  } else b.innerHTML = '';
+}
+
+function syncFilters() {
+  const type = VIEW_TYPE[UI.view];
+  // workstream
+  const wsSel = $('#f-ws');
+  wsSel.innerHTML = `<option value="All">All workstreams</option>` + WS.map(w => `<option value="${w}">${esc(WS_LABEL[w])}</option>`).join('');
+  wsSel.value = UI.ws;
+  // site
+  const sites = DB.sites.filter(s => UI.ws === 'All' || s.workstream === UI.ws);
+  if (UI.site !== 'All' && !sites.some(s => s.site === UI.site)) UI.site = 'All';
+  $('#f-site').innerHTML = `<option value="All">All sites</option>` + sites.map(s => `<option value="${esc(s.site)}">${esc(s.site)}</option>`).join('');
+  $('#f-site').value = UI.site;
+  // date range bounds
+  const f = firstDate(), l = lastDate();
+  ['#f-from', '#f-to'].forEach(id => { $(id).min = f; $(id).max = l; });
+  $('#f-from').value = UI.from || ''; $('#f-to').value = UI.to || '';
+  // metric
+  $('#f-metric').innerHTML = Object.entries(METRICS).map(([k, m]) => `<option value="${k}">${esc(m.label)}</option>`).join('');
+  $('#f-metric').value = UI.metric;
+  // period
+  $('#f-period-label').textContent = {day: 'Report day', week: `Week (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][DB.settings.weekStart]}–${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][(DB.settings.weekStart + 6) % 7]})`, month: 'Month'}[type];
+  const list = periodsAvailable(type);
+  let cur = UI.period[UI.view];
+  if (!cur || !list.includes(cur)) cur = list[list.length - 1] || null;
+  UI.period[UI.view] = cur;
+  $('#f-period').innerHTML = list.length ? list.slice().reverse().map(k => `<option value="${k}">${esc(periodLabel(type, k))}</option>`).join('') : `<option value="">No data</option>`;
+  if (cur) $('#f-period').value = cur;
+}
+
+function renderPeriodView(el, type) {
+  const key = UI.period[UI.view];
+  if (!key) {
+    el.innerHTML = `<div class="card"><div class="empty" style="height:220px">No records match the current filters.<br>Adjust the filters or upload a daily report in <b>Data Upload &amp; Management</b>.</div></div>`;
+    return;
+  }
+  const w = windowFor(type, key);
+  const R = scopedRecords();
+  const cur = R.filter(r => inRange(r, w.a, w.b));
+  const prev = R.filter(r => inRange(r, w.pa, w.pb));
+  const S = scopedSites();
+  const vs = type === 'day' ? `vs ${fmtDs(w.pa)}` : `vs ${fmtRange(w.pa, w.pb).replace(/ \d{4}$/, '')}`;
+  const title = {day: 'Daily Exploration Activities', week: 'Weekly Exploration Review', month: 'Monthly Exploration Activities'}[type];
+  const when = type === 'day' ? fmtDlong(w.a) : type === 'week' ? fmtRange(w.a, w.b) + (w.partial ? ' (week to date)' : '') : periodLabel('month', key) + (w.partial ? ` (month to date, ${fmtRange(w.a, w.b)})` : '');
+  const filt = [UI.ws !== 'All' ? WS_LABEL[UI.ws] : null, UI.site !== 'All' ? UI.site : null].filter(Boolean).join(' · ');
+  const pname = {day: 'day', week: 'week', month: 'month'}[type];
+
+  el.innerHTML = `
+    <div class="view-head">
+      <h2>${title}</h2>
+      <div class="sub">${esc(when)} · compared with ${esc(type === 'day' ? fmtD(w.pa) : fmtRange(w.pa, w.pb))}${filt ? ' · <b>' + esc(filt) + '</b>' : ''}</div>
+    </div>
+    <div class="grid g-3" id="hl"></div>
+    <div class="grid g-kpi mt" id="kpis"></div>
+    <div class="grid g-2 mt">
+      <div class="card"><div class="card-head"><div class="grow"><h3>Programme progress</h3><div class="card-sub">Cumulative position against programme targets as at ${esc(fmtD(w.b))}</div></div></div><div id="progress"></div></div>
+      <div class="card"><div class="card-head"><div class="grow"><h3>Metres drilled by site</h3><div class="card-sub">This ${pname} · ${esc(fmtRange(w.a, w.b))}</div></div></div><div class="chart-box" id="c-metres" data-label="Metres drilled by site"></div></div>
+    </div>
+    <div class="grid g-2 mt">
+      ${type === 'day'
+        ? `<div class="card"><div class="card-head"><div class="grow"><h3>Samples collected by site</h3><div class="card-sub">Soil and termite samples · ${esc(fmtD(w.a))}</div></div></div><div class="chart-box" id="c-samples" data-label="Samples collected by site"></div></div>`
+        : `<div class="card"><div class="card-head"><div class="grow"><h3>Sampling progress against programme targets</h3><div class="card-sub">Cumulative % of soil and termite-mound targets as at ${esc(fmtD(w.b))}</div></div></div><div class="chart-box" id="c-sampprog" data-label="Sampling progress against targets"></div></div>`}
+      <div class="card"><div class="card-head"><div class="grow"><h3>${esc(METRICS[UI.metric].label)} — trend</h3><div class="card-sub">By ${type === 'day' ? 'day' : type} across the selected date range · change the metric in the filter bar</div></div></div><div class="chart-box" id="c-trend" data-label="Trend"></div></div>
+    </div>
+    <div class="grid g-2 mt">
+      ${type === 'day'
+        ? `<div class="card"><div class="card-head"><div class="grow"><h3>PrepLab receipts vs submissions</h3><div class="card-sub">Daily, last 14 reporting days to ${esc(fmtD(w.b))}</div></div></div><div class="chart-box" id="c-prep" data-label="Receipts versus submissions"></div></div>`
+        : `<div class="card"><div class="card-head"><div class="grow"><h3>Daily activity this ${pname}</h3><div class="card-sub">${esc(METRICS[UI.metric].label)} per day, stacked by ${stackLabel(UI.metric)}</div></div></div><div class="chart-box" id="c-inperiod" data-label="Daily activity in period"></div></div>`}
+      <div class="card"><div class="card-head"><div class="grow"><h3>Downtime by site</h3><div class="card-sub">Hours lost this ${pname} (equipment, water, access)</div></div></div><div class="chart-box short" id="c-down" data-label="Downtime by site"></div></div>
+    </div>
+    ${type !== 'day' ? `<div class="grid g-2 mt">
+      <div class="card"><div class="card-head"><div class="grow"><h3>Sample receipts and laboratory submissions</h3><div class="card-sub">PrepLab, by ${pname} across the selected date range</div></div></div><div class="chart-box" id="c-prep" data-label="Receipts and submissions"></div></div>
+      <div class="card"><div class="card-head"><div class="grow"><h3>Samples collected — share by site</h3><div class="card-sub">Soil + termite this ${pname}</div></div></div><div class="chart-box" id="c-share" data-label="Share of samples by site"></div></div>
+    </div>` : ''}
+    <div class="card mt"><div class="card-head"><div class="grow"><h3>Site summary</h3><div class="card-sub">${type === 'day' ? 'Daily result' : 'Period result'}, comparison with ${esc(vs.replace('vs ', ''))}, cumulative position and completion</div></div></div><div id="summary"></div></div>
+    <div class="card mt"><div class="card-head"><div class="grow"><h3>Operational challenges &amp; decisions required</h3><div class="card-sub">Latest challenge and next step reported per site in this ${pname}</div></div></div><div id="issues"></div></div>
+    <div class="card mt"><div class="card-head"><div class="grow"><h3>Detailed records</h3><div class="card-sub">Underlying daily records for ${esc(fmtRange(w.a, w.b))}. Search, sort, or delete wrong entries.</div></div></div><div id="tbl-period"></div></div>
+  `;
+
+  renderHeadlines(w, cur, S, type);
+  renderKPIs(w, cur, prev, S, vs);
+  renderProgress(w, S, cur);
+  chartMetresBySite(cur);
+  if (type === 'day') chartSamplesBySite(cur); else chartSamplingProgress(w, S);
+  chartTrend(type, w);
+  if (type === 'day') chartPrep('day', w); else { chartInPeriod(w); chartPrep(type, w); chartShare(cur); }
+  chartDowntime(cur);
+  renderSummary(w, cur, prev, S, type);
+  renderIssues(cur);
+  renderTable('tbl-period', cur, {showWs: true});
+}
+const stackLabel = m => (METRICS[m].ws ? 'site' : 'workstream');
+
+/* ---------- headline boxes (mirror the report header) ---------- */
+function renderHeadlines(w, cur, S, type) {
+  const span = type === 'day' ? 'Today' : type === 'week' ? 'This week' : 'This month';
+  const box = [];
+  const drill = S.filter(s => s.workstream === 'Brownfield' && s.drillType && (s.active || hasAny(cur.filter(r => r.site === s.site), ['metres'])));
+  if (drill.length) {
+    const part = t => { const ss = drill.filter(s => s.drillType === t); if (!ss.length) return null;
+      const c = ss.reduce((a, s) => a + cumulative(s.site, 'metres', w.b), 0), p = ss.reduce((a, s) => a + (+s.programmeM || 0), 0);
+      const d = sum(cur.filter(r => ss.some(s => s.site === r.site)), ['metres']);
+      return {t, c, p, d}; };
+    const parts = ['DD', 'RC'].map(part).filter(Boolean);
+    box.push(`<div class="card headline" style="--c:${wsColor('Brownfield')}"><div class="eyebrow"><span class="dot"></span>Brownfield drilling</div>
+      <div class="big">${parts.map(x => `${x.t} ${fmt(x.c)} / ${fmt(x.p)} m`).join(' &nbsp;|&nbsp; ')}</div>
+      ${parts.map(x => `<div class="bar thin" style="margin-top:6px" title="${x.t} ${fmtPct(x.p ? x.c / x.p * 100 : null, 2)}"><i style="width:${Math.min(100, x.p ? x.c / x.p * 100 : 0)}%"></i></div>`).join('')}
+      <div class="today">${span} &nbsp;|&nbsp; ${parts.map(x => `${x.t} ${fmt(x.d)} m`).join(' and ')}</div></div>`);
+  }
+  const geo = S.filter(s => s.workstream === 'Greenfield' && (+s.soilTarget || +s.termiteTarget));
+  if (geo.length) {
+    const tot = upto => geo.reduce((a, s) => a + cumulative(s.site, 'soil', upto) + cumulative(s.site, 'termite', upto), 0);
+    const tgt = geo.reduce((a, s) => a + (+s.soilTarget || 0) + (+s.termiteTarget || 0), 0);
+    const c = tot(w.b), cs = cur.filter(r => geo.some(s => s.site === r.site));
+    const so = sum(cs, ['soil']), te = sum(cs, ['termite']);
+    box.push(`<div class="card headline" style="--c:${wsColor('Greenfield')}"><div class="eyebrow"><span class="dot"></span>Greenfield sampling</div>
+      <div class="big">${fmt(c)} / ${fmt(tgt)} samples</div>
+      <div class="bar thin" style="margin-top:6px"><i style="width:${Math.min(100, tgt ? c / tgt * 100 : 0)}%;--fill:var(--series-3)"></i></div>
+      <div class="kpi-sub" style="margin-top:4px">${fmtPct(tgt ? c / tgt * 100 : null)} of the sampling programme completed</div>
+      <div class="today">${span} &nbsp;|&nbsp; ${fmt(so + te)} samples (${fmt(so)} soil and ${fmt(te)} termite)</div></div>`);
+  }
+  const prep = S.filter(s => s.workstream === 'PrepLab');
+  if (prep.length) {
+    const p = pendingAt(w.b, prep.map(s => s.site));
+    const pc = cur.filter(r => r.workstream === 'PrepLab');
+    const sub = sum(pc, ['submitted']), rec = sum(pc, ['received']);
+    const cr = prep.reduce((a, s) => a + cumulative(s.site, 'received', w.b), 0), cs = prep.reduce((a, s) => a + cumulative(s.site, 'submitted', w.b), 0);
+    box.push(`<div class="card headline" style="--c:${wsColor('PrepLab')}"><div class="eyebrow"><span class="dot"></span>Core Shed / PrepLab</div>
+      <div class="big">${isNum(p.value) ? fmt(p.value) + ' samples pending preparation' : 'Backlog not reported'}</div>
+      <div class="kpi-sub">${isNum(p.value) ? 'Snapshot ' + fmtD(p.date) + ' · ' : ''}Cumulative ${fmt(cr)} received / ${fmt(cs)} submitted</div>
+      <div class="today">${span} &nbsp;|&nbsp; ${fmt(sub)} submitted incl. QA/QC${hasAny(pc, ['received']) ? `, ${fmt(rec)} received` : ' · intake not reported'}</div></div>`);
+  }
+  const mine = S.filter(s => s.workstream === 'Mining');
+  if (mine.length && (UI.ws === 'Mining' || box.length < 3)) {
+    const mc = cur.filter(r => r.workstream === 'Mining');
+    const ct = mine.reduce((a, s) => a + cumulative(s.site, 'trips', w.b), 0);
+    const cton = mine.reduce((a, s) => a + ['waste', 'cu', 'co'].reduce((b, k) => b + cumulative(s.site, k, w.b), 0), 0);
+    box.push(`<div class="card headline" style="--c:${wsColor('Mining')}"><div class="eyebrow"><span class="dot"></span>Mining operations</div>
+      <div class="big">${fmt(ct)} trips · ${fmt(cton)} t</div><div class="kpi-sub">Cumulative estimated tonnage</div>
+      <div class="today">${span} &nbsp;|&nbsp; ${fmt(sum(mc, ['trips']))} trips, ${fmt(sum(mc, ['waste', 'cu', 'co']))} t</div></div>`);
+  }
+  $('#hl').innerHTML = box.join('') || '';
+  $('#hl').classList.toggle('hidden', !box.length);
+}
+
+/* ---------- KPI cards with period-over-period variance ---------- */
+function renderKPIs(w, cur, prev, S, vs) {
+  const show = ws => UI.ws === 'All' ? true : UI.ws === ws;
+  const ddSites = new Set(DB.sites.filter(s => s.drillType === 'DD').map(s => s.site));
+  const rcSites = new Set(DB.sites.filter(s => s.drillType !== 'DD').map(s => s.site));
+  const k = [];
+  const nr = (recs, keys, v) => hasAny(recs, keys) ? v : '—';
+  const card = (label, value, unit, sub, delta, ws, extra = '') => `<div class="card kpi"><div class="kpi-label">${ws ? `<span class="dot" style="--c:${wsColor(ws)}"></span>` : ''}${label}</div>
+    <div class="kpi-value">${value}${unit ? `<small>${unit}</small>` : ''}</div><div class="kpi-sub">${sub}</div>${delta}${extra}</div>`;
+  if (show('Brownfield')) {
+    const m = sum(cur, ['metres']), pm = sum(prev, ['metres']);
+    const dd = sum(cur.filter(r => ddSites.has(r.site)), ['metres']), rc = sum(cur.filter(r => rcSites.has(r.site)), ['metres']);
+    k.push(card('Metres drilled', nr(cur, ['metres'], fmt(m)), hasAny(cur, ['metres']) ? 'm' : '', `DD ${fmt(dd)} m · RC ${fmt(rc)} m`, deltaHTML(hasAny(cur, ['metres']) ? m : null, hasAny(prev, ['metres']) ? pm : null, {vs}), 'Brownfield'));
+    const recov = rs => { const x = rs.filter(r => ddSites.has(r.site) && isNum(r.recovered) && isNum(r.metres) && r.metres > 0); const mm = sum(x, ['metres']); return mm ? sum(x, ['recovered']) / mm * 100 : null; };
+    const rv = recov(cur), pv = recov(prev);
+    const tgt = Math.max(0, ...DB.sites.filter(s => s.drillType === 'DD').map(s => +s.recoveryTarget || 0)) || 90;
+    const st = isNum(rv) ? (rv >= tgt ? `<span class="status ok">✓ On target</span>` : `<span class="status no">✕ Below ${tgt}%</span>`) : '';
+    k.push(card('Core recovery (DD)', fmtPct(rv), '', `Target ≥${tgt}% ${st}`, deltaHTML(rv, pv, {pp: true, vs}), 'Brownfield'));
+  }
+  if (show('Greenfield')) {
+    const so = sum(cur, ['soil']), te = sum(cur, ['termite']);
+    k.push(card('Samples collected', nr(cur, ['soil', 'termite'], fmt(so + te)), '', `${fmt(so)} soil · ${fmt(te)} termite`, deltaHTML(hasAny(cur, ['soil', 'termite']) ? so + te : null, hasAny(prev, ['soil', 'termite']) ? sum(prev, ['soil', 'termite']) : null, {vs}), 'Greenfield'));
+  }
+  if (show('PrepLab')) {
+    const sb = sum(cur, ['submitted']), rc = sum(cur, ['received']);
+    const prepSites = S.filter(s => s.workstream === 'PrepLab');
+    const tgt = prepSites.reduce((a, s) => a + (+s.dailySubmitTarget || 0), 0) * w.days;
+    k.push(card('Samples submitted', nr(cur, ['submitted'], fmt(sb)), '', `${hasAny(cur, ['received']) ? fmt(rc) + ' received' : 'Receipts not reported'}${tgt ? ` · ${fmtPct(sb / tgt * 100, 0)} of ${fmt(tgt)} target` : ''}`,
+      deltaHTML(hasAny(cur, ['submitted']) ? sb : null, hasAny(prev, ['submitted']) ? sum(prev, ['submitted']) : null, {vs}), 'PrepLab'));
+    const names = prepSites.map(s => s.site);
+    const p = pendingAt(w.b, names), pp = pendingAt(w.pb, names);
+    k.push(card('Pending preparation', isNum(p.value) ? fmt(p.value) : '—', '', isNum(p.value) ? `Backlog snapshot ${fmtDs(p.date)}` : 'No backlog snapshot reported',
+      deltaHTML(p.value, pp.date && pp.date !== p.date ? pp.value : null, {goodUp: false, vs: pp.date && pp.date !== p.date ? 'vs ' + fmtDs(pp.date) : ''}), 'PrepLab'));
+  }
+  if (show('Mining')) {
+    const t = sum(cur, ['trips']), ton = sum(cur, ['waste', 'cu', 'co']);
+    k.push(card('Truck trips', nr(cur, ['trips'], fmt(t)), '', hasAny(cur, ['trips']) ? (hasAny(cur, ['waste', 'cu', 'co']) ? `${fmt(ton)} t estimated (${fmt(sum(cur, ['cu', 'co']))} t ore)` : 'Tonnage not reported') : 'Not reported this period', deltaHTML(hasAny(cur, ['trips']) ? t : null, hasAny(prev, ['trips']) ? sum(prev, ['trips']) : null, {vs}), 'Mining'));
+  }
+  const dt = sum(cur, ['downtime']);
+  const nSites = new Set(cur.filter(r => isNum(r.downtime) && r.downtime > 0).map(r => r.site)).size;
+  k.push(card('Downtime', nr(cur, ['downtime'], fmt(dt, 1)), hasAny(cur, ['downtime']) ? 'h' : '', nSites ? `${nSites} site${nSites > 1 ? 's' : ''} affected` : 'No downtime hours reported', deltaHTML(hasAny(cur, ['downtime']) ? dt : null, hasAny(prev, ['downtime']) ? sum(prev, ['downtime']) : null, {goodUp: false, vs}), null));
+  $('#kpis').innerHTML = k.join('');
+}
+
+/* ---------- programme progress (HTML bars) ---------- */
+function renderProgress(w, S, cur) {
+  const rows = [];
+  const bar = (pct, fill) => `<div class="bar"><i style="width:${Math.max(0, Math.min(100, pct || 0))}%;--fill:${fill}"></i></div>`;
+  const active = S.filter(s => s.active || cur.some(r => r.site === s.site));
+  for (const ws of WS) {
+    const ss = active.filter(s => s.workstream === ws); if (!ss.length) continue;
+    if (rows.length) rows.push('<div class="prog-sep"></div>');
+    for (const s of ss) {
+      const name = `<div class="name">${esc(s.site)}<small>${esc([s.licence, s.activity].filter(Boolean).join(' · '))}</small></div>`;
+      if (+s.programmeM) {
+        const c = cumulative(s.site, 'metres', w.b), p = +s.programmeM;
+        rows.push(`${name}${bar(c / p * 100, 'var(--series-1)')}<div class="val"><b>${fmt(c)}</b> / ${fmt(p)} m · <b>${fmtPct(c / p * 100, c / p < 0.1 ? 2 : 1)}</b></div>`);
+      } else if (+s.soilTarget || +s.termiteTarget) {
+        const cs = cumulative(s.site, 'soil', w.b), ct = cumulative(s.site, 'termite', w.b);
+        const ts = +s.soilTarget || 0, tt = +s.termiteTarget || 0;
+        rows.push(`${name}<div>${ts ? bar(cs / ts * 100, 'var(--series-1)') : ''}<div style="height:4px"></div>${tt ? bar(ct / tt * 100, 'var(--series-2)') : ''}</div>
+          <div class="val">Soil <b>${fmt(cs)}</b>/${fmt(ts)} · <b>${fmtPct(ts ? cs / ts * 100 : null)}</b><br>Termite <b>${fmt(ct)}</b>/${fmt(tt)} · <b>${fmtPct(tt ? ct / tt * 100 : null)}</b></div>`);
+      } else if (+s.dailySubmitTarget) {
+        const sub = sum(cur.filter(r => r.site === s.site), ['submitted']), t = +s.dailySubmitTarget * w.days;
+        rows.push(`${name}${bar(sub / t * 100, 'var(--series-4)')}<div class="val">Submitted <b>${fmt(sub)}</b> / ${fmt(t)} · <b>${fmtPct(sub / t * 100, 0)}</b> of ${fmt(+s.dailySubmitTarget)}/day</div>`);
+      } else if (s.workstream === 'Mining') {
+        rows.push(`${name}<div class="kpi-sub">No programme target set</div><div class="val"><b>${fmt(cumulative(s.site, 'trips', w.b))}</b> trips cumulative</div>`);
+      } else {
+        rows.push(`${name}<div class="kpi-sub">No numeric target · see records</div><div class="val"></div>`);
+      }
+    }
+  }
+  $('#progress').innerHTML = rows.length
+    ? `<div class="prog">${rows.join('')}</div><div class="legend-note">Bars: <span class="dot" style="--c:var(--series-1)"></span> metres / soil &nbsp; <span class="dot" style="--c:var(--series-2)"></span> termite &nbsp; <span class="dot" style="--c:var(--series-4)"></span> submissions vs target. Targets and carried-in balances are editable under Data → Sites &amp; targets.</div>`
+    : `<div class="empty" style="height:160px">No active sites for this selection.</div>`;
+}
+
+/* ---------- charts ---------- */
+function bySite(recs, keys) {
+  const m = new Map();
+  for (const r of recs) { const v = sum([r], keys); if (!hasAny([r], keys)) continue; m.set(r.site, (m.get(r.site) || 0) + v); }
+  return m;
+}
+function chartMetresBySite(cur) {
+  const m = bySite(cur, ['metres']);
+  const sites = [...m.keys()].sort((a, b) => m.get(b) - m.get(a));
+  const o = chartOpts({horizontal: true, legend: false, unit: 'm', pad: {right: 56}, labels: {enabled: true, format: v => fmt(v) + ' m'}});
+  mkChart('c-metres', {type: 'bar', data: {labels: sites, datasets: [barDataset('Metres drilled', sites.map(s => m.get(s)), cssVar('--series-1'))]}, options: o},
+    !sites.length, 'No drilling reported for this period.');
+}
+function chartSamplesBySite(cur) {
+  const so = bySite(cur, ['soil']), te = bySite(cur, ['termite']);
+  const sites = [...new Set([...so.keys(), ...te.keys()])].filter(s => (so.get(s) || 0) + (te.get(s) || 0) > 0);
+  const o = chartOpts({horizontal: true, stacked: true});
+  mkChart('c-samples', {type: 'bar', data: {labels: sites, datasets: [
+    barDataset('Soil', sites.map(s => so.get(s) || 0), cssVar('--series-1'), {stacked: true, horizontal: true}),
+    barDataset('Termite', sites.map(s => te.get(s) || 0), cssVar('--series-2'), {stacked: true, horizontal: true})]}, options: o},
+  !sites.length, 'No samples collected in this period.');
+}
+function chartSamplingProgress(w, S) {
+  const geo = S.filter(s => s.workstream === 'Greenfield' && (+s.soilTarget || +s.termiteTarget));
+  const pct = (s, k, t) => +s[t] ? Math.round(cumulative(s.site, k, w.b) / +s[t] * 1000) / 10 : null;
+  const o = chartOpts({pct: true, labels: {enabled: true, format: v => fmtPct(v)}, pad: {top: 20}});
+  const top = Math.max(100, ...geo.flatMap(s => [pct(s, 'soil', 'soilTarget') || 0, pct(s, 'termite', 'termiteTarget') || 0]));
+  o.scales.y.max = Math.ceil(top / 10) * 10 + 15;
+  o.scales.y.afterBuildTicks = ax => { ax.ticks = ax.ticks.filter(t => t.value <= Math.ceil(top / 10) * 10); };
+  o.plugins.legend.labels.padding = 22;
+  mkChart('c-sampprog', {type: 'bar', data: {labels: geo.map(s => s.site.replace(/ Geochem$/, '')), datasets: [
+    barDataset('Soils', geo.map(s => pct(s, 'soil', 'soilTarget')), cssVar('--series-1')),
+    barDataset('Termite mounds', geo.map(s => pct(s, 'termite', 'termiteTarget')), cssVar('--series-2'))]}, options: o},
+  !geo.length, 'No Greenfield sites with sampling targets in this selection.');
+}
+// Trend: bucketed by day / week / month across the selected date range, stacked by site
+function trendBuckets(type, w) {
+  const R = scopedRecords();
+  let from = UI.from || firstDate(), to = UI.to || lastDate();
+  if (type === 'day') { if (!UI.from) from = addDays(w.b, -20) < firstDate() ? firstDate() : addDays(w.b, -20); if (!UI.to) to = w.b; }
+  const keys = [];
+  let k = periodKey(type, from); const end = periodKey(type, to);
+  let guard = 0;
+  while (k <= end && guard++ < 400) { keys.push(k); k = type === 'day' ? addDays(k, 1) : type === 'week' ? addDays(k, 7) : (() => { const [y, m] = k.split('-').map(Number); return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7); })(); }
+  return {keys, recs: R.filter(r => r.date >= from && r.date <= to), from, to};
+}
+function stackedByGroup(recs, keys, bucketOf, buckets) {
+  const metric = METRICS[UI.metric];
+  const groupBy = metric.ws ? 'site' : 'workstream';
+  const rel = recs.filter(r => hasAny([r], metric.keys) && (!metric.ws || UI.ws !== 'All' || r.workstream === metric.ws || true));
+  let groups = [...new Set(rel.map(r => r[groupBy]))];
+  if (groupBy === 'site') groups.sort((a, b) => DB.sites.findIndex(s => s.site === a) - DB.sites.findIndex(s => s.site === b));
+  else groups.sort((a, b) => WS.indexOf(a) - WS.indexOf(b));
+  const ds = groups.map(g => {
+    const data = buckets.map(() => 0);
+    for (const r of rel) if (r[groupBy] === g) { const i = buckets.indexOf(bucketOf(r)); if (i >= 0) data[i] += sum([r], metric.keys); }
+    const color = groupBy === 'site' ? siteColor(g) : cssVar('--ws-' + g);
+    return barDataset(groupBy === 'site' ? g : WS_LABEL[g], data.map(v => Math.round(v * 100) / 100), color, {stacked: true});
+  });
+  return ds;
+}
+function chartTrend(type, w) {
+  const {keys, recs} = trendBuckets(type, w);
+  const metric = METRICS[UI.metric];
+  const ds = stackedByGroup(recs, metric.keys, r => periodKey(type, r.date), keys);
+  const labels = keys.map(k => type === 'day' ? fmtDs(k) : type === 'week' ? fmtDs(k) + '–' + fmtDs(addDays(k, 6)) : periodLabel('month', k).replace(/ \d{4}$/, m => m.slice(0, 0) + ' ' + k.slice(2, 4)));
+  const o = chartOpts({stacked: true, unit: metric.unit});
+  o.plugins.tooltip.callbacks.footer = items => 'Total: ' + fmt(items.reduce((a, i) => a + (+i.raw || 0), 0)) + (metric.unit ? ' ' + metric.unit : '');
+  mkChart('c-trend', {type: 'bar', data: {labels, datasets: ds}, options: o}, !ds.length || ds.every(d => d.data.every(v => !v)), `No ${metric.label.toLowerCase()} in the selected date range.`);
+}
+function chartInPeriod(w) {
+  const days = []; for (let d = w.a; d <= w.b; d = addDays(d, 1)) days.push(d);
+  const recs = scopedRecords().filter(r => inRange(r, w.a, w.b));
+  const metric = METRICS[UI.metric];
+  const ds = stackedByGroup(recs, metric.keys, r => r.date, days);
+  const o = chartOpts({stacked: true, unit: metric.unit});
+  o.plugins.tooltip.callbacks.footer = items => 'Total: ' + fmt(items.reduce((a, i) => a + (+i.raw || 0), 0)) + (metric.unit ? ' ' + metric.unit : '');
+  mkChart('c-inperiod', {type: 'bar', data: {labels: days.map(fmtDs), datasets: ds}, options: o}, !ds.length || ds.every(d => d.data.every(v => !v)), `No ${metric.label.toLowerCase()} in this period.`);
+}
+function chartPrep(type, w) {
+  let keys, recs;
+  if (type === 'day') {
+    const ds = [...new Set(DB.records.filter(r => r.workstream === 'PrepLab' && r.date <= w.b).map(r => r.date))].sort().slice(-14);
+    keys = ds; recs = DB.records.filter(r => r.workstream === 'PrepLab' && ds.includes(r.date));
+  } else { const t = trendBuckets(type, w); keys = t.keys; recs = t.recs.filter(r => r.workstream === 'PrepLab'); }
+  if (UI.site !== 'All') recs = recs.filter(r => r.site === UI.site);
+  const agg = k => keys.map(b => { const x = recs.filter(r => periodKey(type, r.date) === b); return hasAny(x, [k]) ? sum(x, [k]) : null; });
+  const labels = keys.map(k => type === 'month' ? periodLabel('month', k) : type === 'week' ? fmtDs(k) + '–' + fmtDs(addDays(k, 6)) : fmtDs(k));
+  const show = UI.ws === 'All' || UI.ws === 'PrepLab';
+  mkChart('c-prep', {type: 'bar', data: {labels, datasets: [
+    barDataset('Received', agg('received'), cssVar('--series-1')),
+    barDataset('Submitted incl. QA/QC', agg('submitted'), cssVar('--series-2'))]}, options: chartOpts({})},
+  !show || !hasAny(recs, ['received', 'submitted']), show ? 'No PrepLab receipts or submissions in this range.' : 'PrepLab is outside the current workstream filter.');
+}
+function chartDowntime(cur) {
+  const m = bySite(cur, ['downtime']);
+  const sites = [...m.keys()].filter(s => m.get(s) > 0).sort((a, b) => m.get(b) - m.get(a));
+  const o = chartOpts({horizontal: true, legend: false, unit: 'h', pad: {right: 44}, labels: {enabled: true, format: v => fmt(v, 1) + ' h'}});
+  mkChart('c-down', {type: 'bar', data: {labels: sites, datasets: [barDataset('Downtime', sites.map(s => Math.round(m.get(s) * 100) / 100), cssVar('--series-8'))]}, options: o},
+    !sites.length, 'No downtime hours reported for this period.');
+}
+function chartShare(cur) {
+  const m = bySite(cur, ['soil', 'termite']);
+  const sites = [...m.keys()].filter(s => m.get(s) > 0);
+  sites.sort((a, b) => DB.sites.findIndex(s => s.site === a) - DB.sites.findIndex(s => s.site === b));
+  const total = sites.reduce((a, s) => a + m.get(s), 0);
+  const cfg = {type: 'doughnut', data: {labels: sites, datasets: [{data: sites.map(s => m.get(s)), backgroundColor: sites.map(siteColor), borderColor: cssVar('--chart-surface'), borderWidth: 2, hoverOffset: 4}]},
+    options: {responsive: true, maintainAspectRatio: false, cutout: '62%', animation: {duration: UI.printing ? 0 : 250},
+      plugins: {legend: {position: 'right', labels: {color: cssVar('--text'), usePointStyle: true, pointStyle: 'rectRounded', boxWidth: 10, padding: 12,
+        generateLabels: ch => ch.data.labels.map((l, i) => ({text: `${l}  ${fmt(m.get(l))} (${fmtPct(m.get(l) / total * 100, 0)})`, fillStyle: ch.data.datasets[0].backgroundColor[i], strokeStyle: 'transparent', fontColor: cssVar('--text'), index: i, hidden: !ch.getDataVisibility(i)}))}},
+        tooltip: {callbacks: {label: c => ` ${c.label}: ${fmt(c.raw)} samples (${fmtPct(c.raw / total * 100)})`}}}}};
+  mkChart('c-share', cfg, !sites.length, 'No samples collected in this period.');
+}
+
+/* ---------- site summary table ---------- */
+function siteResult(site, recs) {
+  const c = siteCfg(site) || {workstream: ''}; const r = recs.filter(x => x.site === site);
+  switch (c.workstream) {
+    case 'Brownfield': return {v: sum(r, ['metres']), txt: hasAny(r, ['metres']) ? fmt(sum(r, ['metres'])) + ' m' : '—', has: hasAny(r, ['metres'])};
+    case 'Greenfield': { const s = sum(r, ['soil']), t = sum(r, ['termite']); return {v: s + t, txt: hasAny(r, ['soil', 'termite']) ? `${fmt(s)} soil / ${fmt(t)} termite` : '—', has: hasAny(r, ['soil', 'termite'])}; }
+    case 'PrepLab': { const a = sum(r, ['received']), b = sum(r, ['submitted']); return {v: b, txt: hasAny(r, ['received', 'submitted']) ? `${hasAny(r, ['received']) ? fmt(a) : 'NR'} rec. / ${fmt(b)} sub.` : '—', has: hasAny(r, ['submitted'])}; }
+    case 'Mining': return {v: sum(r, ['trips']), txt: hasAny(r, ['trips']) ? `${fmt(sum(r, ['trips']))} trips` : '—', has: hasAny(r, ['trips'])};
+    default: return {v: 0, txt: '—', has: false};
+  }
+}
+function renderSummary(w, cur, prev, S, type) {
+  const sites = S.filter(s => s.active || cur.some(r => r.site === s.site) || prev.some(r => r.site === s.site));
+  if (!sites.length) { $('#summary').innerHTML = `<div class="empty" style="height:120px">No sites for this selection.</div>`; return; }
+  const rows = sites.map(s => {
+    const a = siteResult(s.site, cur), b = siteResult(s.site, prev);
+    let target = 'NR', cum = 'NR', pct = 'NR';
+    if (+s.programmeM) { const c = cumulative(s.site, 'metres', w.b); target = `${fmt(+s.programmeM)} m`; cum = `${fmt(c)} m`; pct = fmtPct(c / s.programmeM * 100, c / s.programmeM < 0.1 ? 2 : 1); }
+    else if (+s.soilTarget || +s.termiteTarget) {
+      const cs = cumulative(s.site, 'soil', w.b), ct = cumulative(s.site, 'termite', w.b);
+      target = `${fmt(+s.soilTarget || 0)} soil / ${fmt(+s.termiteTarget || 0)} termite`; cum = `${fmt(cs)} / ${fmt(ct)}`;
+      pct = `${fmtPct(+s.soilTarget ? cs / s.soilTarget * 100 : null)} soil · ${fmtPct(+s.termiteTarget ? ct / s.termiteTarget * 100 : null)} termite`;
+    } else if (s.workstream === 'PrepLab') {
+      target = +s.dailySubmitTarget ? `${fmt(+s.dailySubmitTarget)} submissions / day` : 'NR';
+      cum = `${fmt(cumulative(s.site, 'received', w.b))} rec. / ${fmt(cumulative(s.site, 'submitted', w.b))} sub.`;
+      pct = +s.dailySubmitTarget && a.has ? fmtPct(a.v / (s.dailySubmitTarget * w.days) * 100, 0) + ' of target' : 'NR';
+    } else if (s.workstream === 'Mining') {
+      const ton = ['waste', 'cu', 'co'].reduce((x, k) => x + cumulative(s.site, k, w.b), 0);
+      cum = `${fmt(cumulative(s.site, 'trips', w.b))} trips / ${fmt(ton)} t`;
+    }
+    const d = a.has || b.has ? deltaHTML(a.has ? a.v : 0, b.has ? b.v : null, {vs: ''}) : '<span class="delta flat">—</span>';
+    return `<tr><td><b>${esc(s.site)}</b><div class="src">${esc([s.licence, s.activity].filter(Boolean).join(' · '))}</div></td>
+      <td><span class="tag"><span class="dot" style="--c:${wsColor(s.workstream)}"></span>${esc(s.workstream)}</span></td>
+      <td class="n">${a.txt}</td><td class="n">${b.txt}</td><td class="n">${d}</td><td>${esc(target)}</td><td class="n">${esc(cum)}</td><td>${esc(pct)}</td></tr>`;
+  }).join('');
+  const lbl = {day: 'Day', week: 'Week', month: 'Month'}[type];
+  $('#summary').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>Site</th><th>Workstream</th><th class="n">${lbl} result</th><th class="n">Prior ${lbl.toLowerCase()}</th><th class="n">Change</th><th>Programme / target</th><th class="n">Cumulative</th><th>Completed</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+/* ---------- challenges ---------- */
+function renderIssues(cur) {
+  const latest = new Map();
+  for (const r of cur.slice().sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!r.challenge && !r.action) continue;
+    const prev = latest.get(r.site);
+    if (prev && prev.date === r.date) { latest.set(r.site, {...r, challenge: [prev.challenge, r.challenge].filter(Boolean).join(' '), action: r.action || prev.action}); }
+    else latest.set(r.site, r);
+  }
+  const items = [...latest.values()].sort((a, b) => WS.indexOf(a.workstream) - WS.indexOf(b.workstream));
+  $('#issues').innerHTML = items.length ? `<div class="issues">${items.map(r => `<div class="issue" style="--c:${wsColor(r.workstream)}">
+      <div class="site">${esc(r.site)}<span class="tag">${esc(r.workstream)}</span><span class="date">${esc(fmtD(r.date))}</span></div>
+      ${r.challenge ? `<p><span class="lbl">Challenge</span>${esc(r.challenge)}</p>` : ''}
+      ${r.action ? `<p><span class="lbl">Action</span>${esc(r.action)}</p>` : ''}</div>`).join('')}</div>`
+    : `<div class="empty" style="height:90px">No challenges or actions recorded in this period.</div>`;
+}
+
+/* ---------- reusable records table (search, sort, paginate, delete) ---------- */
+const TABLE_COLS = [
+  {k: 'date', l: 'Date', f: r => fmtD(r.date)},
+  {k: 'workstream', l: 'Workstream', ws: true, f: r => `<span class="tag"><span class="dot" style="--c:${wsColor(r.workstream)}"></span>${esc(r.workstream)}</span>`},
+  {k: 'site', l: 'Site', f: r => `<b>${esc(r.site)}</b>`},
+  {k: 'holeId', l: 'Hole / Block', f: r => esc(r.holeId || '')},
+  {k: 'metres', l: 'Metres', n: true}, {k: 'recovered', l: 'Recov. (m)', n: true},
+  {k: 'soil', l: 'Soil', n: true}, {k: 'termite', l: 'Termite', n: true},
+  {k: 'received', l: 'Received', n: true}, {k: 'submitted', l: 'Submitted', n: true}, {k: 'pending', l: 'Pending', n: true},
+  {k: 'trips', l: 'Trips', n: true}, {k: 'tonnes', l: 'Tonnes', n: true, get: r => hasAny([r], ['waste', 'cu', 'co']) ? sum([r], ['waste', 'cu', 'co']) : null},
+  {k: 'downtime', l: 'Down (h)', n: true},
+  {k: 'geology', l: 'Geology / results', clamp: true}, {k: 'challenge', l: 'Challenge', clamp: true}, {k: 'action', l: 'Action / next step', clamp: true},
+  {k: 'source', l: 'Source', f: r => `<span class="src">${esc(r.source || '')}</span>`}
+];
+function renderTable(id, recs, {showWs = true} = {}) {
+  const st = UI.tables[id] || (UI.tables[id] = {q: '', sort: 'date', dir: -1, page: 0, size: 25, sel: new Set()});
+  const host = document.getElementById(id); if (!host) return;
+  const get = (c, r) => c.get ? c.get(r) : r[c.k];
+  const cols = TABLE_COLS.filter(c => (c.k !== 'workstream' || showWs) && (!c.n && !c.clamp || recs.some(r => { const v = get(c, r); return v !== null && v !== undefined && v !== ''; })));
+  const q = st.q.trim().toLowerCase();
+  let rows = q ? recs.filter(r => Object.values(r).some(v => String(v ?? '').toLowerCase().includes(q))) : recs.slice();
+  const sc = TABLE_COLS.find(c => c.k === st.sort) || TABLE_COLS[0];
+  rows.sort((a, b) => {
+    const va = get(sc, a), vb = get(sc, b);
+    if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+    const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), undefined, {numeric: true});
+    return (c || a.site.localeCompare(b.site)) * st.dir;
+  });
+  const size = UI.printing ? rows.length || 1 : st.size;
+  const pages = Math.max(1, Math.ceil(rows.length / size)); if (st.page >= pages) st.page = pages - 1;
+  const pageRows = rows.slice(st.page * size, st.page * size + size);
+  for (const sid of [...st.sel]) if (!recs.some(r => r.id === sid)) st.sel.delete(sid);
+  const allSel = pageRows.length && pageRows.every(r => st.sel.has(r.id));
+  const totals = cols.filter(c => c.n && c.k !== 'pending').reduce((o, c) => (o[c.k] = rows.reduce((a, r) => a + (isNum(get(c, r)) ? get(c, r) : 0), 0), o), {});
+  host.innerHTML = `
+    <div class="tbl-tools">
+      <input type="search" placeholder="Search records (site, hole, challenge, source…)" value="${esc(st.q)}" data-tbl-search="${id}" aria-label="Search records">
+      <span class="grow"></span>
+      ${st.sel.size ? `<button class="btn sm danger" data-action="tbl-del-sel" data-tbl="${id}">Delete ${st.sel.size} selected</button>` : ''}
+      <label class="check" style="font-size:12px">Rows <select data-tbl-size="${id}">${[10, 25, 50, 100, 500].map(n => `<option ${n === st.size ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr>
+      <th class="col-sel"><input type="checkbox" aria-label="Select all on page" data-tbl-selall="${id}" ${allSel ? 'checked' : ''}></th>
+      ${cols.map(c => `<th class="sortable ${c.n ? 'n' : ''}" data-tbl-sort="${id}" data-k="${c.k}">${c.l}<span class="arr">${st.sort === c.k ? (st.dir > 0 ? '▲' : '▼') : '↕'}</span></th>`).join('')}
+      <th class="col-del"></th></tr></thead>
+      <tbody>${pageRows.map(r => `<tr>
+        <td class="col-sel"><input type="checkbox" data-tbl-sel="${id}" data-id="${esc(r.id)}" ${st.sel.has(r.id) ? 'checked' : ''} aria-label="Select record"></td>
+        ${cols.map(c => c.n ? `<td class="n">${isNum(get(c, r)) ? fmt(get(c, r)) : ''}</td>` : c.clamp ? `<td class="clamp" title="${esc(r[c.k] || '')}"><div>${esc(r[c.k] || '')}</div></td>` : `<td>${c.f ? c.f(r) : esc(r[c.k] ?? '')}</td>`).join('')}
+        <td class="col-del"><button class="icon-btn" title="Delete this record" aria-label="Delete record" data-action="del-rec" data-id="${esc(r.id)}" data-tbl="${id}">🗑</button></td></tr>`).join('') ||
+        `<tr><td colspan="${cols.length + 2}" style="text-align:center;color:var(--muted);padding:24px">No matching records</td></tr>`}
+      ${rows.length > 1 ? `<tr class="sum"><td class="col-sel"></td>${cols.map((c, i) => i === 0 ? `<td>Total (${fmt(rows.length)} rows)</td>` : c.n ? `<td class="n">${c.k === 'pending' ? '' : fmt(totals[c.k])}</td>` : '<td></td>').join('')}<td class="col-del"></td></tr>` : ''}
+      </tbody></table></div>
+    <div class="pager">${rows.length ? `${fmt(st.page * size + 1)}–${fmt(Math.min(rows.length, (st.page + 1) * size))} of ${fmt(rows.length)}` : '0 records'}
+      <button class="btn sm" data-action="tbl-page" data-tbl="${id}" data-step="-1" ${st.page === 0 ? 'disabled' : ''}>‹ Prev</button>
+      <button class="btn sm" data-action="tbl-page" data-tbl="${id}" data-step="1" ${st.page >= pages - 1 ? 'disabled' : ''}>Next ›</button></div>`;
+  host._recs = recs; host._opts = {showWs};
+}
+function rerenderTable(id) { const h = document.getElementById(id); if (h && h._recs) renderTable(id, h._recs.filter(r => DB.records.includes(r)), h._opts); }
+
+async function deleteRecords(ids) {
+  const set = new Set(ids);
+  DB.records = DB.records.filter(r => !set.has(r.id));
+  DB.log.unshift({when: new Date().toISOString(), action: 'delete', detail: `${set.size} record(s) deleted`});
+  await persist(); render(); toast(`Deleted ${set.size} record${set.size > 1 ? 's' : ''}. Weekly and monthly totals recalculated.`);
+}
+
+/* =====================================================================
+   DATA UPLOAD & MANAGEMENT
+   ===================================================================== */
+function renderData(el) {
+  const f = firstDate(), l = lastDate();
+  el.innerHTML = `
+    <div class="view-head"><h2>Data Upload &amp; Management</h2><div class="sub">Upload daily reports. Weekly and monthly views recalculate automatically.</div></div>
+    <div class="grid g-2">
+      <div class="card">
+        <div class="card-head"><div class="grow"><h3>1 · Upload daily report</h3><div class="card-sub">.csv or .xlsx in the template format. You can drop several files at once.</div></div></div>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload files: click or drop CSV or Excel files here">
+          <strong>⇪ Drop CSV / Excel files here</strong><p>or click to browse · columns are checked against the template before import</p>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+          <label class="check"><input type="checkbox" id="opt-replace" checked> Replace existing records for the same Date + Site (re-uploads update)</label>
+        </div>
+        <div id="pending-imports" class="mt"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="grow"><h3>2 · Template</h3><div class="card-sub">Pre-filled with the 17 Nov 2026 rows so you can see the expected format.</div></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn primary" data-action="tpl-xlsx">⬇ Excel template (.xlsx)</button>
+          <button class="btn" data-action="tpl-csv">⬇ CSV template</button>
+        </div>
+        <details><summary>Column guide (${FIELDS.length} columns · required: Date, Site)</summary>
+          <div class="tbl-wrap mt" style="max-height:300px"><table><thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead><tbody>
+          ${FIELDS.map(c => `<tr><td><b>${esc(c.label)}</b>${c.req ? ' <span class="status no">required</span>' : ''}</td><td>${c.type === 'num' ? 'number' : c.type}</td><td>${esc(c.desc)}</td></tr>`).join('')}
+          </tbody></table></div></details>
+        <p class="kpi-sub" style="margin-top:10px">One row per site per day (or per hole when several holes are drilled). Leave metric cells blank when not applicable. <b>Pending Preparation</b> is a backlog snapshot and is never summed. Weekly and monthly views use the latest value.</p>
+      </div>
+    </div>
+
+    <div class="card mt" id="sync-card" style="border-top:4px solid var(--accent)"></div>
+
+    <div class="card mt">
+      <div class="card-head"><div class="grow"><h3>3 · Sites &amp; programme targets</h3><div class="card-sub">Targets drive the progress %. Carried-in balances hold activity from before your first daily record, so cumulatives match your reports. New sites from uploads appear here automatically.</div></div>
+        <button class="btn sm" data-action="site-add">+ Add site</button></div>
+      <div id="sites-editor"></div>
+    </div>
+
+    <div class="grid g-2 mt">
+      <div class="card">
+        <div class="card-head"><div class="grow"><h3>4 · Backup, restore &amp; reset</h3><div class="card-sub">The JSON export can also be uploaded to GitHub by hand as <b>data.json</b> to share it without a token.</div></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" data-action="export-json">⬇ Export all data (JSON)</button>
+          <button class="btn" data-action="export-csv">⬇ Export records (CSV)</button>
+          <button class="btn" data-action="export-xlsx">⬇ Export Excel (records + weekly &amp; monthly roll-ups)</button>
+          <button class="btn" data-action="import-json">⇪ Restore from JSON backup</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <button class="btn danger" data-action="reset-clear">Clear all data</button>
+          <button class="btn" data-action="reset-sample">Reload sample data</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="grow"><h3>Storage &amp; settings</h3></div></div>
+        <dl class="kv">
+          <dt>Records</dt><dd>${fmt(DB.records.length)}</dd>
+          <dt>Sites</dt><dd>${fmt(DB.sites.length)}</dd>
+          <dt>Date range</dt><dd>${f ? esc(fmtRange(f, l)) : '—'}</dd>
+          <dt>Saved in</dt><dd>${Store.engine()} (this browser)${Sync.meta.version && !Sync.meta.dirty ? ' + GitHub (shared)' : ''}</dd>
+          <dt>Dataset</dt><dd>${DB.isSample ? 'Sample data from attached reports' : 'Your uploaded data'}</dd>
+        </dl>
+        <label class="field mt" style="max-width:260px"><span>Week starts on</span>
+          <select id="set-weekstart">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${i === DB.settings.weekStart ? 'selected' : ''}>${d}${i === 6 ? ' (matches 7–13 Nov report)' : ''}</option>`).join('')}</select></label>
+        <details class="mt"><summary>Activity log (${DB.log.length})</summary>
+          <div class="tbl-wrap mt" style="max-height:220px"><table><tbody>${DB.log.slice(0, 100).map(x => `<tr><td class="src">${esc(new Date(x.when).toLocaleString())}</td><td>${esc(x.action)}</td><td>${esc(x.detail)}</td></tr>`).join('') || '<tr><td>No activity yet</td></tr>'}</tbody></table></div></details>
+      </div>
+    </div>
+
+    <div class="card mt"><div class="card-head"><div class="grow"><h3>All records</h3><div class="card-sub">Every stored daily record. Delete erroneous entries here or from any report view.</div></div></div><div id="tbl-all"></div></div>
+  `;
+  renderSyncCard();
+  renderSitesEditor();
+  renderPendingImports();
+  renderTable('tbl-all', DB.records, {showWs: true});
+  const drop = $('#drop');
+  drop.addEventListener('click', () => $('#file-input').click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#file-input').click(); } });
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
+}
+
+const SITE_FIELDS = [
+  {k: 'site', l: 'Site', t: 'text'}, {k: 'workstream', l: 'Workstream', t: 'ws'}, {k: 'licence', l: 'Licence', t: 'text'}, {k: 'activity', l: 'Activity', t: 'text'},
+  {k: 'drillType', l: 'Drill', t: 'drill'}, {k: 'active', l: 'Active', t: 'bool'},
+  {k: 'programmeM', l: 'Programme (m)', t: 'num', g: 'T'}, {k: 'dailyTargetM', l: 'Daily target (m)', t: 'num', g: 'T'}, {k: 'recoveryTarget', l: 'Recovery target %', t: 'num', g: 'T'},
+  {k: 'soilTarget', l: 'Soil target', t: 'num', g: 'T'}, {k: 'termiteTarget', l: 'Termite target', t: 'num', g: 'T'}, {k: 'dailySubmitTarget', l: 'Submissions / day', t: 'num', g: 'T'},
+  {k: 'openM', l: 'Metres', t: 'num', g: 'O'}, {k: 'openRecM', l: 'Recovered m', t: 'num', g: 'O'}, {k: 'openSoil', l: 'Soil', t: 'num', g: 'O'}, {k: 'openTermite', l: 'Termite', t: 'num', g: 'O'},
+  {k: 'openReceived', l: 'Received', t: 'num', g: 'O'}, {k: 'openSubmitted', l: 'Submitted', t: 'num', g: 'O'}, {k: 'openTrips', l: 'Trips', t: 'num', g: 'O'},
+  {k: 'openWaste', l: 'Waste t', t: 'num', g: 'O'}, {k: 'openCu', l: 'Cu t', t: 'num', g: 'O'}, {k: 'openCo', l: 'Co t', t: 'num', g: 'O'}
+];
+function renderSitesEditor() {
+  const nBase = SITE_FIELDS.filter(f => !f.g).length, nT = SITE_FIELDS.filter(f => f.g === 'T').length, nO = SITE_FIELDS.filter(f => f.g === 'O').length;
+  const cell = (s, i, f) => {
+    const v = s[f.k];
+    if (f.t === 'ws') return `<select data-site="${i}" data-f="${f.k}">${WS.map(w => `<option ${w === v ? 'selected' : ''}>${w}</option>`).join('')}</select>`;
+    if (f.t === 'drill') return `<select data-site="${i}" data-f="${f.k}">${['', 'DD', 'RC'].map(w => `<option value="${w}" ${w === (v || '') ? 'selected' : ''}>${w || '—'}</option>`).join('')}</select>`;
+    if (f.t === 'bool') return `<input type="checkbox" data-site="${i}" data-f="${f.k}" ${v ? 'checked' : ''} aria-label="Active programme">`;
+    if (f.t === 'num') return `<input type="number" min="0" step="any" data-site="${i}" data-f="${f.k}" value="${isNum(+v) && v !== null && v !== '' && v !== undefined ? v : ''}">`;
+    return `<input type="text" data-site="${i}" data-f="${f.k}" value="${esc(v || '')}">`;
+  };
+  $('#sites-editor').innerHTML = `<div class="tbl-wrap sites-tbl" style="max-height:520px"><table>
+    <thead><tr><th class="grp" colspan="${nBase}"></th><th class="grp" colspan="${nT}">Programme targets</th><th class="grp" colspan="${nO}">Carried-in balances (before first record)</th><th class="grp"></th></tr>
+    <tr>${SITE_FIELDS.map(f => `<th>${f.l}</th>`).join('')}<th></th></tr></thead>
+    <tbody>${DB.sites.map((s, i) => `<tr>${SITE_FIELDS.map(f => `<td>${cell(s, i, f)}</td>`).join('')}
+      <td><button class="icon-btn" data-action="site-del" data-i="${i}" title="Delete site" aria-label="Delete site">🗑</button></td></tr>`).join('')}</tbody></table></div>
+    <p class="legend-note">Changes save automatically. <b>Active</b> sites appear in the headline programme totals (e.g. RC metres / programme). Renaming a site also renames its records.</p>`;
+}
+
+/* ---------- parsing ---------- */
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const delim = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : (firstLine.includes('\t') && !firstLine.includes(',') ? '\t' : ',');
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+const ALIAS_MAP = (() => { const m = {}; for (const f of FIELDS) for (const a of [f.key, f.label, ...f.aliases]) m[norm(a)] = f.key; return m; })();
+function matchHeader(h) { const n = norm(h); if (!n) return null; return ALIAS_MAP[n] || null; }
+function parseDate(v) {
+  if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  if (typeof v === 'number' && v > 20000 && v < 80000) { // Excel serial date
+    if (window.XLSX && XLSX.SSF) { const d = XLSX.SSF.parse_date_code(v); return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`; }
+    return fromUTC(Math.round((v - 25569) * 864e5));
+  }
+  const s = String(v).trim(); let m;
+  const ok = (y, mo, d) => { y = +y; mo = +mo; d = +d; if (y < 100) y += 2000; if (mo < 1 || mo > 12 || d < 1 || d > 31) return null; const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`; return fromUTC(toUTC(iso)) === iso ? iso : null; };
+  if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T].*)?$/))) return ok(m[1], m[2], m[3]);
+  if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:\s.*)?$/))) return ok(m[3], m[2], m[1]); // DD/MM/YYYY
+  const mi = t => MON.findIndex(x => x.toLowerCase() === t.slice(0, 3).toLowerCase()) + 1;
+  if ((m = s.match(/^(\d{1,2})[\s\-/.]+([A-Za-z]{3,9})\.?[\s\-/.,]+(\d{2,4})$/)) && mi(m[2])) return ok(m[3], mi(m[2]), m[1]);
+  if ((m = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})$/)) && mi(m[1])) return ok(m[3], mi(m[1]), m[2]);
+  if (/^\d{5}$/.test(s)) return parseDate(+s);
+  return null;
+}
+function parseNum(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  let s = String(v).trim().replace(/\s/g, '').replace(/(m|t|h|%)$/i, '');
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
+  else if (/^-?\d+,\d+$/.test(s)) s = s.replace(',', '.');
+  const n = Number(s); return s !== '' && isFinite(n) ? n : null;
+}
+function normWS(v) { const n = norm(v); if (!n) return null; return WS.find(w => norm(w) === n) || WS_ALIASES[n] || (n.includes('brown') ? 'Brownfield' : n.includes('green') ? 'Greenfield' : n.includes('prep') || n.includes('core') ? 'PrepLab' : n.includes('min') ? 'Mining' : null); }
+
+async function readFileRows(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (ext === 'csv' || ext === 'txt') return [{sheet: 'CSV', rows: parseCSV(await file.text())}];
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'xlsm') {
+    if (!window.XLSX) throw new Error('Excel parser not loaded (check internet connection). Save the file as CSV and try again.');
+    const wb = XLSX.read(await file.arrayBuffer(), {type: 'array', cellDates: false});
+    return wb.SheetNames.map(n => ({sheet: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], {header: 1, raw: true, defval: null, blankrows: false})}));
+  }
+  throw new Error(`Unsupported file type ".${ext}". Use .csv or .xlsx.`);
+}
+async function handleFiles(files) {
+  for (const file of files) {
+    const res = {file: file.name, id: uid(), errors: [], warnings: [], rows: [], mapped: [], unknown: [], missing: []};
+    try {
+      const sheets = await readFileRows(file);
+      let found = null;
+      for (const s of sheets) {
+        for (let i = 0; i < Math.min(15, s.rows.length); i++) {
+          const map = (s.rows[i] || []).map(matchHeader);
+          if (map.includes('date') && map.includes('site')) { found = {sheet: s.sheet, hdrIdx: i, header: s.rows[i], map, data: s.rows.slice(i + 1)}; break; }
+        }
+        if (found) break;
+      }
+      if (!found) throw new Error('No header row with "Date" and "Site" columns was found in the first 15 rows of any sheet. Download the template to check the expected format.');
+      res.sheet = found.sheet;
+      res.mapped = found.map.filter(Boolean);
+      res.unknown = found.header.filter((h, j) => h != null && String(h).trim() !== '' && !found.map[j]).map(String);
+      res.missing = FIELDS.filter(f => !res.mapped.includes(f.key)).map(f => f.label);
+      const dupes = new Set(found.map.filter((k, j) => k && found.map.indexOf(k) !== j));
+      if (dupes.size) res.warnings.push(`Duplicate columns for ${[...dupes].map(k => FIELD[k].label).join(', ')}. The first occurrence is used.`);
+      const seen = new Map();
+      found.data.forEach((row, i) => {
+        if (!row || row.every(v => v == null || String(v).trim() === '')) return;
+        const line = found.hdrIdx + i + 2; const rec = {}; const errs = [], warns = [];
+        found.map.forEach((k, j) => {
+          if (!k || (found.map.indexOf(k) !== j)) return;
+          const v = row[j]; if (v == null || String(v).trim() === '') return;
+          const f = FIELD[k];
+          if (f.type === 'date') { const d = parseDate(v); if (!d) errs.push(`Date "${v}" not recognised`); else rec.date = d; }
+          else if (f.type === 'num') { const n = parseNum(v); if (n == null) errs.push(`${f.label}: "${v}" is not a number`); else if (n < 0) errs.push(`${f.label} cannot be negative`); else rec[k] = n; }
+          else if (f.type === 'ws') { const w = normWS(v); if (!w) errs.push(`Workstream "${v}" unknown (use ${WS.join(', ')})`); else rec.workstream = w; }
+          else rec[k] = String(v).trim();
+        });
+        if (!rec.date && !errs.some(e => e.startsWith('Date'))) errs.push('Date is missing');
+        if (!rec.site) errs.push('Site is missing');
+        if (rec.site) {
+          const c = siteCfgCI(rec.site);
+          if (c) { rec.site = c.site; if (!rec.workstream) rec.workstream = c.workstream; else if (c.workstream !== rec.workstream) warns.push(`"${c.site}" is set up under ${c.workstream}; this row says ${rec.workstream}`); }
+          else if (!rec.workstream) errs.push(`New site "${rec.site}" needs a Workstream`);
+          else warns.push(`New site "${rec.site}" will be added to Sites & targets`);
+        }
+        if (isNum(rec.recovered) && isNum(rec.metres) && rec.recovered > rec.metres + 1e-9) warns.push('Core recovered exceeds metres drilled');
+        if (rec.date && rec.date > todayStr()) warns.push('Date is in the future');
+        if (!NUM_KEYS.some(k => isNum(rec[k])) && !rec.challenge && !rec.geology && !rec.action) warns.push('Row has no metrics or notes');
+        const dk = `${rec.date}|${norm(rec.site)}|${norm(rec.holeId)}`;
+        if (rec.date && rec.site) { if (seen.has(dk)) warns.push(`Same Date + Site + Hole as line ${seen.get(dk)}`); else seen.set(dk, line); }
+        if (!rec.source) rec.source = 'Upload: ' + file.name;
+        res.rows.push({line, rec, errs, warns});
+      });
+      if (!res.rows.length) res.errors.push('The file has a header row but no data rows.');
+    } catch (e) { res.errors.push(e.message || String(e)); }
+    UI.pending.push(res);
+  }
+  renderPendingImports();
+}
+function renderPendingImports() {
+  const host = $('#pending-imports'); if (!host) return;
+  host.innerHTML = UI.pending.map(p => {
+    const valid = p.rows.filter(r => !r.errs.length), bad = p.rows.filter(r => r.errs.length), warn = p.rows.filter(r => r.warns.length);
+    const dates = [...new Set(valid.map(r => r.rec.date))].sort();
+    const issues = [...bad.map(r => ({c: 'err', t: `Line ${r.line}: ${r.errs.join('; ')} (row skipped)`})), ...warn.map(r => ({c: 'warn', t: `Line ${r.line}: ${r.warns.join('; ')}`}))];
+    return `<div class="card" style="margin-top:10px;background:var(--surface-2)">
+      <div class="card-head"><div class="grow"><h3>${esc(p.file)}</h3><div class="card-sub">${p.sheet ? 'Sheet "' + esc(p.sheet) + '" · ' : ''}${fmt(p.rows.length)} data rows${dates.length ? ' · ' + esc(fmtRange(dates[0], dates[dates.length - 1])) : ''}</div></div>
+        <button class="btn sm" data-action="imp-discard" data-id="${p.id}">Discard</button>
+        ${valid.length && !p.errors.length ? `<button class="btn sm primary" data-action="imp-commit" data-id="${p.id}">Import ${fmt(valid.length)} row${valid.length > 1 ? 's' : ''}</button>` : ''}</div>
+      ${p.errors.map(e => `<div class="msg err">✕ ${esc(e)}</div>`).join('')}
+      ${p.mapped.length ? `<div class="chips" style="margin-bottom:6px">${p.mapped.map(k => `<span class="chip ok">✓ ${esc(FIELD[k].label)}</span>`).join('')}
+        ${p.unknown.map(h => `<span class="chip bad" title="Not in template, ignored">? ${esc(h)}</span>`).join('')}</div>
+        ${p.missing.length ? `<div class="msg" style="color:var(--muted)">Not in file (treated as blank): ${esc(p.missing.join(', '))}</div>` : ''}` : ''}
+      ${p.rows.length ? `<div class="msg ${bad.length ? 'err' : 'ok'}">${bad.length ? '✕' : '✓'} ${fmt(valid.length)} valid · ${fmt(bad.length)} with errors · ${fmt(warn.length)} with warnings</div>` : ''}
+      ${issues.length ? `<details ${bad.length ? 'open' : ''}><summary>Validation details (${issues.length})</summary>${issues.slice(0, 200).map(i => `<div class="msg ${i.c}">${esc(i.t)}</div>`).join('')}</details>` : ''}
+      ${valid.length ? `<details><summary>Preview</summary><div class="tbl-wrap mt" style="max-height:260px"><table><thead><tr><th>Line</th><th>Date</th><th>Site</th><th>Workstream</th>${NUM_KEYS.filter(k => valid.some(r => isNum(r.rec[k]))).map(k => `<th class="n">${esc(FIELD[k].label)}</th>`).join('')}</tr></thead><tbody>
+        ${valid.slice(0, 50).map(r => `<tr><td>${r.line}</td><td>${esc(fmtD(r.rec.date))}</td><td>${esc(r.rec.site)}</td><td>${esc(r.rec.workstream)}</td>${NUM_KEYS.filter(k => valid.some(x => isNum(x.rec[k]))).map(k => `<td class="n">${isNum(r.rec[k]) ? fmt(r.rec[k]) : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>` : ''}
+    </div>`;
+  }).join('');
+}
+function guessDrill(rec) { const t = `${rec.drillType || ''} ${rec.activity || ''} ${rec.site}`.toLowerCase(); if (/\bdd\b|diamond/.test(t)) return 'DD'; if (/\brc\b|reverse|wrd/.test(t)) return 'RC'; return isNum(rec.metres) ? 'RC' : ''; }
+async function commitImport(id) {
+  const p = UI.pending.find(x => x.id === id); if (!p) return;
+  const valid = p.rows.filter(r => !r.errs.length).map(r => r.rec);
+  const replace = $('#opt-replace') ? $('#opt-replace').checked : true;
+  if (DB.isSample && DB.records.some(r => r.id.startsWith('seed-'))) {
+    const keep = !(await confirmBox('Keep the sample data?', 'You are importing your first real file. Remove the sample data (rebuilt from the attached reports) first? Choose "Remove sample data" for a clean start, or Cancel to keep it alongside your upload.', 'Remove sample data', true));
+    if (!keep) { DB.records = DB.records.filter(r => !r.id.startsWith('seed-')); }
+    DB.isSample = false;
+  }
+  let replaced = 0;
+  if (replace) {
+    const keys = new Set(valid.map(r => r.date + '|' + r.site));
+    const before = DB.records.length;
+    DB.records = DB.records.filter(r => !keys.has(r.date + '|' + r.site));
+    replaced = before - DB.records.length;
+  }
+  for (const r of valid) {
+    if (!siteCfg(r.site)) DB.sites.push({site: r.site, workstream: r.workstream, licence: '', activity: r.activity || '', drillType: r.workstream === 'Brownfield' ? guessDrill(r) : '', active: true});
+    else { const c = siteCfg(r.site); if (c.workstream === 'Brownfield' && !c.drillType && isNum(r.metres)) c.drillType = guessDrill(r); }
+    const rec = {...r, id: uid()}; delete rec.drillType;
+    DB.records.push(rec);
+  }
+  DB.records.sort((a, b) => a.date.localeCompare(b.date) || a.site.localeCompare(b.site));
+  DB.log.unshift({when: new Date().toISOString(), action: 'import', detail: `${p.file}: ${valid.length} row(s) imported${replace ? `, ${replaced} replaced` : ''}`});
+  UI.pending = UI.pending.filter(x => x.id !== id);
+  await persist();
+  const last = valid.map(r => r.date).sort().pop();
+  if (last) { UI.period.daily = last; UI.period.weekly = weekStartOf(last); UI.period.monthly = last.slice(0, 7); }
+  render();
+  toast(`Imported ${valid.length} row${valid.length > 1 ? 's' : ''}${replaced ? ` (${replaced} replaced)` : ''}. Weekly & monthly views updated.`);
+}
+
+/* ---------- templates & exports ---------- */
+const TEMPLATE_HEAD = FIELDS.map(f => f.label);
+function recToRow(r) { return FIELDS.map(f => f.key === 'drillType' ? (siteCfg(r.site) || {}).drillType || '' : r[f.key] ?? ''); }
+const csvCell = v => { const s = String(v ?? ''); return /[",\n\r;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const toCSV = rows => '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+function templateRows() {
+  const ex = (SEED ? SEED.records : []).filter(r => r.date === '2026-11-17').map(r => recToRow({...r, source: ''}));
+  return [TEMPLATE_HEAD, ...ex];
+}
+function rollups(type) {
+  const out = [['Period', 'Start', 'End', 'Site', 'Workstream', 'Metres', 'Core recovered (m)', 'Recovery %', 'Soil', 'Termite', 'Received', 'Submitted', 'Pending (latest)', 'Trips', 'Tonnes', 'Downtime (h)', 'Records']];
+  const groups = new Map();
+  for (const r of DB.records) { const k = periodKey(type, r.date) + '|' + r.site; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
+  for (const [k, rs] of [...groups.entries()].sort()) {
+    const [pk, site] = k.split('|'); const [a, b] = periodBounds(type, pk);
+    const dd = rs.filter(r => isNum(r.recovered) && isNum(r.metres)); const mm = sum(dd, ['metres']);
+    const pend = rs.filter(r => isNum(r.pending)).sort((x, y) => x.date.localeCompare(y.date)).pop();
+    out.push([periodLabel(type, pk), a, b, site, rs[0].workstream, sum(rs, ['metres']) || '', sum(rs, ['recovered']) || '', mm ? Math.round(sum(dd, ['recovered']) / mm * 1000) / 10 : '',
+      sum(rs, ['soil']) || '', sum(rs, ['termite']) || '', sum(rs, ['received']) || '', sum(rs, ['submitted']) || '', pend ? pend.pending : '', sum(rs, ['trips']) || '', sum(rs, ['waste', 'cu', 'co']) || '', sum(rs, ['downtime']) || '', rs.length]);
+  }
+  return out;
+}
+function exportXLSX(name, sheets) {
+  if (!window.XLSX) { toast('Excel library not loaded. Use CSV export instead.'); return; }
+  const wb = XLSX.utils.book_new();
+  for (const [n, rows, widths] of sheets) { const ws = XLSX.utils.aoa_to_sheet(rows); if (widths) ws['!cols'] = widths.map(w => ({wch: w})); XLSX.utils.book_append_sheet(wb, ws, n); }
+  XLSX.writeFile(wb, name);
+}
+const stamp = () => new Date().toISOString().slice(0, 10);
+
+/* ---------- reset / seed ---------- */
+function seedDB() {
+  const s = JSON.parse(JSON.stringify(SEED || {sites: [], records: []}));
+  return {sites: s.sites, records: s.records, settings: {weekStart: 6, sampleBannerDismissed: false}, log: [{when: new Date().toISOString(), action: 'seed', detail: `${s.records.length} sample records loaded from the attached Daily / Weekly / Monthly reports`}], isSample: true};
+}
+
+/* =====================================================================
+   EVENTS
+   ===================================================================== */
+document.addEventListener('click', async e => {
+  const tab = e.target.closest('.tab');
+  if (tab) { UI.view = tab.dataset.view; render(); window.scrollTo({top: 0}); return; }
+  const t = e.target.closest('[data-action]'); if (!t) return;
+  const a = t.dataset.action;
+  if (a === 'period-step') {
+    const type = VIEW_TYPE[UI.view]; const list = periodsAvailable(type); const i = list.indexOf(UI.period[UI.view]);
+    const j = Math.max(0, Math.min(list.length - 1, i + +t.dataset.step)); UI.period[UI.view] = list[j]; render();
+  } else if (a === 'reset-filters') { UI.ws = 'All'; UI.site = 'All'; UI.from = ''; UI.to = ''; render(); }
+  else if (a === 'goto-data') { UI.view = 'data'; render(); }
+  else if (a === 'goto-sync') { UI.view = 'data'; render(); const c = $('#sync-card'); if (c) c.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+  else if (a === 'sync-save') {
+    const v = id => ($(id) ? $(id).value.trim() : '');
+    Object.assign(Sync.cfg, {owner: v('#sy-owner'), repo: v('#sy-repo').replace(/\.git$/, ''), branch: v('#sy-branch') || 'main', path: v('#sy-path') || 'data.json', token: v('#sy-token'), auto: $('#sy-auto').checked});
+    Sync.saveCfg();
+    if (!Sync.canPublish()) { toast('Fill in owner, repository and token.'); renderSyncCard(); return; }
+    t.disabled = true; t.textContent = 'Testing…';
+    try {
+      await Sync.test(); Sync.meta.lastError = ''; Sync.saveMeta();
+      toast(`Connected to ${Sync.cfg.owner}/${Sync.cfg.repo} ✓`);
+      const remote = await Sync.getRemote();
+      if (remote.data && versionOf(remote.data) > (Sync.meta.version || '') && !Sync.meta.dirty) await adoptShared(remote.data);
+      else if (Sync.meta.dirty || !remote.data) {
+        if (await confirmBox('Publish now?', remote.data ? 'Share the data on this computer with everyone now? It replaces the shared copy on GitHub.' : `There is no shared data in ${Sync.cfg.owner}/${Sync.cfg.repo} yet. Publish the ${NF0.format(DB.records.length)} records on this computer so everyone can see them?`, 'Publish', false)) await Sync.publish();
+      }
+    } catch (err) { Sync.meta.lastError = err.message; Sync.saveMeta(); toast('Connection failed: ' + err.message); }
+    syncUI(); if (UI.view === 'data') renderSyncCard();
+  }
+  else if (a === 'sync-publish') { await Sync.publish(); }
+  else if (a === 'sync-forget') {
+    if (await confirmBox('Remove token?', 'This computer will no longer publish to GitHub. Shared data stays online.', 'Remove token')) { Sync.cfg.token = ''; Sync.saveCfg(); syncUI(); renderSyncCard(); }
+  }
+  else if (a === 'sync-load') {
+    let d = null;
+    try { d = Sync.canPublish() ? (await Sync.getRemote()).data : await Sync.fetchShared(); } catch (err) { d = await Sync.fetchShared(); }
+    if (!d) { toast(Sync.hosted ? 'No shared data found on GitHub yet.' : 'Open the hosted GitHub Pages address to load shared data.'); return; }
+    if (Sync.meta.dirty && !(await confirmBox('Replace this computer\'s data?', 'This computer has changes that are not shared. Loading the shared data replaces them.', 'Load shared data'))) return;
+    await adoptShared(d); toast(`Loaded shared data (${NF0.format(DB.records.length)} records, updated ${fmtStamp(versionOf(d))}).`);
+  }
+  else if (a === 'dismiss-banner') { DB.settings.sampleBannerDismissed = true; await persist(false); renderSampleBanner(); }
+  else if (a === 'del-rec') {
+    const r = DB.records.find(x => x.id === t.dataset.id); if (!r) return;
+    if (await confirmBox('Delete record?', `${r.site} · ${fmtD(r.date)}${r.holeId ? ' · ' + r.holeId : ''}. Weekly and monthly totals will be recalculated.`, 'Delete')) deleteRecords([r.id]);
+  } else if (a === 'tbl-del-sel') {
+    const st = UI.tables[t.dataset.tbl]; const ids = [...st.sel];
+    if (await confirmBox(`Delete ${ids.length} records?`, 'This cannot be undone (export a backup first if unsure).', 'Delete')) { st.sel.clear(); deleteRecords(ids); }
+  } else if (a === 'tbl-page') { const st = UI.tables[t.dataset.tbl]; st.page += +t.dataset.step; rerenderTable(t.dataset.tbl); }
+  else if (a === 'imp-discard') { UI.pending = UI.pending.filter(x => x.id !== t.dataset.id); renderPendingImports(); }
+  else if (a === 'imp-commit') { t.disabled = true; await commitImport(t.dataset.id); }
+  else if (a === 'tpl-csv') download('Daily_Exploration_Template.csv', toCSV(templateRows()), 'text/csv;charset=utf-8');
+  else if (a === 'tpl-xlsx') exportXLSX('Daily_Exploration_Template.xlsx', [['Daily data', templateRows(), FIELDS.map(f => Math.max(12, Math.min(40, f.label.length + 4)))],
+    ['Column guide', [['Column', 'Required', 'Type', 'Description'], ...FIELDS.map(f => [f.label, f.req ? 'Yes' : '', f.type === 'num' ? 'number' : f.type, f.desc]),
+      [], ['Workstreams', WS.join(', ')], ['Sites already set up', DB.sites.map(s => s.site).join(', ')]], [24, 10, 10, 80]]]);
+  else if (a === 'export-json') download(`exploration-dashboard-backup-${stamp()}.json`, JSON.stringify({...Sync.payload(), exportedAt: new Date().toISOString()}, null, 1), 'application/json');
+  else if (a === 'export-csv') download(`exploration-records-${stamp()}.csv`, toCSV([TEMPLATE_HEAD, ...DB.records.map(recToRow)]), 'text/csv;charset=utf-8');
+  else if (a === 'export-xlsx') exportXLSX(`exploration-data-${stamp()}.xlsx`, [['Daily records', [TEMPLATE_HEAD, ...DB.records.map(recToRow)]], ['Weekly roll-up', rollups('week')], ['Monthly roll-up', rollups('month')],
+    ['Sites & targets', [SITE_FIELDS.map(f => f.l + (f.g === 'O' ? ' (carried-in)' : '')), ...DB.sites.map(s => SITE_FIELDS.map(f => s[f.k] ?? ''))]]]);
+  else if (a === 'import-json') $('#backup-input').click();
+  else if (a === 'reset-clear') {
+    if (await confirmBox('Clear all data?', 'All records, sites and targets will be removed' + (Sync.canPublish() && Sync.cfg.auto ? ', including the shared online copy that everyone sees' : ' from this browser') + '. Export a backup first if you may need them.', 'Clear everything')) {
+      DB = {sites: [], records: [], settings: {weekStart: DB.settings.weekStart, sampleBannerDismissed: true}, log: [{when: new Date().toISOString(), action: 'reset', detail: 'All data cleared'}], isSample: false};
+      UI.period = {daily: null, weekly: null, monthly: null}; UI.tables = {}; await persist(); render(); toast('All data cleared.');
+    }
+  } else if (a === 'reset-sample') {
+    if (await confirmBox('Reload sample data?', 'This replaces all current records, sites and targets with the sample dataset from the attached reports.', 'Replace with sample')) {
+      DB = seedDB(); UI.period = {daily: null, weekly: null, monthly: null}; UI.tables = {}; await persist(); render(); toast('Sample data reloaded.');
+    }
+  } else if (a === 'site-add') {
+    DB.sites.push({site: 'New site ' + (DB.sites.length + 1), workstream: 'Brownfield', licence: '', activity: '', drillType: '', active: true});
+    await persist(); renderSitesEditor();
+  } else if (a === 'site-del') {
+    const s = DB.sites[+t.dataset.i]; const n = DB.records.filter(r => r.site === s.site).length;
+    if (await confirmBox(`Delete site "${s.site}"?`, n ? `Its ${n} record(s) will also be deleted.` : 'This site has no records.', 'Delete')) {
+      DB.sites.splice(+t.dataset.i, 1); DB.records = DB.records.filter(r => r.site !== s.site); await persist(); render();
+    }
+  }
+});
+document.addEventListener('change', async e => {
+  const t = e.target;
+  if (t.id === 'f-period') { UI.period[UI.view] = t.value; render(); }
+  else if (t.id === 'f-ws') { UI.ws = t.value; render(); }
+  else if (t.id === 'f-site') { UI.site = t.value; render(); }
+  else if (t.id === 'f-from') { UI.from = t.value; if (UI.to && UI.from > UI.to) UI.to = UI.from; render(); }
+  else if (t.id === 'f-to') { UI.to = t.value; if (UI.from && UI.to < UI.from) UI.from = UI.to; render(); }
+  else if (t.id === 'f-metric') { UI.metric = t.value; render(); }
+  else if (t.id === 'set-weekstart') { DB.settings.weekStart = +t.value; UI.period.weekly = null; await persist(); toast('Week start updated.'); }
+  else if (t.id === 'file-input') { await handleFiles([...t.files]); t.value = ''; }
+  else if (t.id === 'backup-input') {
+    const f = t.files[0]; t.value = ''; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (!d || !Array.isArray(d.records) || !Array.isArray(d.sites)) throw new Error('Not a dashboard backup file (missing records/sites).');
+      const bad = d.records.filter(r => !r || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date) || !r.site);
+      if (bad.length) throw new Error(`${bad.length} record(s) have an invalid date or site.`);
+      if (await confirmBox('Restore backup?', `Replace current data with ${d.records.length} records and ${d.sites.length} sites from "${f.name}"?`, 'Restore', false)) {
+        DB = normalizeDB(d); DB.settings.sampleBannerDismissed = true;
+        DB.log.unshift({when: new Date().toISOString(), action: 'restore', detail: `Restored from ${f.name}`});
+        UI.period = {daily: null, weekly: null, monthly: null}; UI.tables = {}; await persist(); render(); toast('Backup restored.');
+      }
+    } catch (err) { toast('Restore failed: ' + err.message); }
+  } else if (t.dataset.tblSel) { const st = UI.tables[t.dataset.tblSel]; t.checked ? st.sel.add(t.dataset.id) : st.sel.delete(t.dataset.id); rerenderTable(t.dataset.tblSel); }
+  else if (t.dataset.tblSelall) {
+    const id = t.dataset.tblSelall; const st = UI.tables[id];
+    $$(`[data-tbl-sel="${id}"]`).forEach(c => t.checked ? st.sel.add(c.dataset.id) : st.sel.delete(c.dataset.id)); rerenderTable(id);
+  } else if (t.dataset.tblSize) { const st = UI.tables[t.dataset.tblSize]; st.size = +t.value; st.page = 0; rerenderTable(t.dataset.tblSize); }
+  else if (t.dataset.site !== undefined && t.dataset.f) {
+    const s = DB.sites[+t.dataset.site]; const f = SITE_FIELDS.find(x => x.k === t.dataset.f);
+    if (f.k === 'site') {
+      const nv = t.value.trim();
+      if (!nv || DB.sites.some((x, i) => i !== +t.dataset.site && norm(x.site) === norm(nv))) { toast('Site names must be unique and not empty.'); t.value = s.site; return; }
+      DB.records.forEach(r => { if (r.site === s.site) r.site = nv; }); s.site = nv;
+    } else if (f.k === 'workstream') { s.workstream = t.value; DB.records.forEach(r => { if (r.site === s.site) r.workstream = t.value; }); }
+    else if (f.t === 'bool') s[f.k] = t.checked;
+    else if (f.t === 'num') s[f.k] = t.value === '' ? null : Math.max(0, +t.value);
+    else s[f.k] = t.value;
+    await persist(); toast('Saved.');
+  }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.tblSearch) {
+    const id = t.dataset.tblSearch; const st = UI.tables[id]; st.q = t.value; st.page = 0;
+    clearTimeout(t._d); t._d = setTimeout(() => { rerenderTable(id); const n = $(`[data-tbl-search="${id}"]`); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200);
+  }
+});
+document.addEventListener('click', e => {
+  const th = e.target.closest('[data-tbl-sort]'); if (!th) return;
+  const st = UI.tables[th.dataset.tblSort]; const k = th.dataset.k;
+  if (st.sort === k) st.dir *= -1; else { st.sort = k; st.dir = ['date'].includes(k) || TABLE_COLS.find(c => c.k === k).n ? -1 : 1; }
+  rerenderTable(th.dataset.tblSort);
+});
+$('#btn-theme').addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('xd-theme', next); } catch (e) {}
+  $('#btn-theme span').textContent = next === 'dark' ? 'Light' : 'Dark';
+  render();
+});
+$('#btn-print').addEventListener('click', () => window.print());
+// Print: light palette, all table rows, charts re-drawn at print size
+window.addEventListener('beforeprint', () => {
+  UI.printing = true; UI._theme = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', 'light'); if (UI.view !== 'data') render();
+  Object.values(charts).forEach(c => c.resize());
+});
+window.addEventListener('afterprint', () => {
+  UI.printing = false; document.documentElement.setAttribute('data-theme', UI._theme || 'light'); render();
+});
+let _rt; window.addEventListener('resize', () => { clearTimeout(_rt); _rt = setTimeout(() => Object.values(charts).forEach(c => c.resize()), 150); });
+
+/* ---------- boot ---------- */
+(async function boot() {
+  $('#btn-theme span').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light' : 'Dark';
+  const missing = [!window.Chart && 'Chart.js (charts)', !window.XLSX && 'SheetJS (Excel import/export)'].filter(Boolean);
+  if (missing.length) $('#lib-warning').innerHTML = `<div class="banner warn">⚠ Could not load ${missing.join(' and ')} from the CDN. Check your internet connection. CSV upload and the tables still work.</div>`;
+  let hadMeta = false; try { hadMeta = !!localStorage.getItem('xd-sync-meta'); } catch (e) {}
+  Sync.load();
+  const saved = await Store.load();
+  if (saved && Array.isArray(saved.records) && Array.isArray(saved.sites)) {
+    DB = {settings: {weekStart: 6, sampleBannerDismissed: false}, log: [], isSample: false, ...saved};
+    DB.settings = {weekStart: 6, sampleBannerDismissed: false, ...(saved.settings || {})};
+    // Data uploaded with the earlier (local-only) version counts as not shared yet
+    if (!hadMeta && DB.records.some(r => !String(r.id).startsWith('seed-'))) { Sync.meta.dirty = true; Sync.saveMeta(); }
+  } else { DB = seedDB(); await persist(false); }
+  // Load the shared copy (data.json next to this page) when it is newer than what this browser has
+  const shared = await Sync.fetchShared();
+  if (shared) {
+    Sync.shared = true;
+    const v = versionOf(shared);
+    if (!Sync.meta.dirty && (!Sync.meta.version || v > Sync.meta.version)) await adoptShared(shared, {quiet: true});
+    else if (Sync.meta.dirty && v > (Sync.meta.version || '')) Sync.conflict = true;
+  }
+  render();
+  setInterval(() => { if (document.visibilityState === 'visible' && !Sync.publishing) Sync.check(); }, 180000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !Sync.publishing) Sync.check(); });
+})();
+</script>
+</body>
+</html>
